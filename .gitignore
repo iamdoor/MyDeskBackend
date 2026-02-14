@@ -1,0 +1,6 @@
+# 含密碼的設定檔
+lib/config.php
+
+# OS
+.DS_Store
+Thumbs.db
