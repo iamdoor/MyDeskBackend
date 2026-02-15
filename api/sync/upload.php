@@ -194,10 +194,12 @@ foreach ($changes as $change) {
 }
 
 // 更新裝置同步時間
-$db->prepare('UPDATE devices SET last_sync_at = NOW() WHERE id = ?')->execute([$deviceId]);
+$serverNow = $db->query("SELECT NOW()")->fetchColumn();
+$db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
 jsonSuccess([
     'results' => $results,
     'conflicts' => $conflicts,
     'has_conflicts' => !empty($conflicts),
+    'server_now' => $serverNow,
 ]);

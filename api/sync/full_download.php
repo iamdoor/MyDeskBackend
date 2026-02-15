@@ -135,13 +135,11 @@ foreach ($aiConversations as &$conv) {
     }
 }
 
-// 取得最新 sync_version
-$stmt = $db->prepare('SELECT COALESCE(MAX(sync_version), 0) FROM sync_log WHERE user_id = ?');
-$stmt->execute([$userId]);
-$latestVersion = (int) $stmt->fetchColumn();
+// 取得伺服器當前時間（查詢前已取會更準，但 full_download 資料量大，用查詢後的時間也可接受）
+$serverNow = $db->query("SELECT NOW()")->fetchColumn();
 
 // 更新裝置同步資訊
-$db->prepare('UPDATE devices SET last_sync_at = NOW(), last_sync_version = ? WHERE id = ?')->execute([$latestVersion, $deviceId]);
+$db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
 jsonSuccess([
     'categories' => $categories,
@@ -151,5 +149,5 @@ jsonSuccess([
     'data_sheets' => $dataSheets,
     'desktops' => $desktops,
     'ai_conversations' => $aiConversations,
-    'latest_sync_version' => $latestVersion,
+    'server_now' => $serverNow,
 ]);
