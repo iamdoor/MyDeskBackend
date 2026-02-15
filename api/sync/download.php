@@ -17,16 +17,19 @@ requireFields($data, ['device_udid', 'last_sync_version']);
 
 $db = getDB();
 
-// 驗證裝置
+// 驗證裝置（不存在則自動註冊）
 $stmt = $db->prepare('SELECT id FROM devices WHERE user_id = ? AND device_udid = ?');
 $stmt->execute([$userId, $data['device_udid']]);
 $device = $stmt->fetch();
 
 if (!$device) {
-    jsonError('裝置未註冊', 404);
+    $platform = $data['platform'] ?? 'ios';
+    $stmt = $db->prepare('INSERT INTO devices (user_id, device_udid, device_name, platform) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$userId, $data['device_udid'], $data['device_name'] ?? '', $platform]);
+    $deviceId = (int) $db->lastInsertId();
+} else {
+    $deviceId = (int) $device['id'];
 }
-
-$deviceId = (int) $device['id'];
 $lastVersion = (int) $data['last_sync_version'];
 
 // 取得該裝置之後的所有同步紀錄（排除自己產生的）

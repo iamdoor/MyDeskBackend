@@ -17,16 +17,19 @@ requireFields($data, ['device_udid']);
 
 $db = getDB();
 
-// 驗證裝置
+// 驗證裝置（不存在則自動註冊）
 $stmt = $db->prepare('SELECT id FROM devices WHERE user_id = ? AND device_udid = ?');
 $stmt->execute([$userId, $data['device_udid']]);
 $device = $stmt->fetch();
 
 if (!$device) {
-    jsonError('裝置未註冊', 404);
+    $platform = $data['platform'] ?? 'ios';
+    $stmt = $db->prepare('INSERT INTO devices (user_id, device_udid, device_name, platform) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$userId, $data['device_udid'], $data['device_name'] ?? '', $platform]);
+    $deviceId = (int) $db->lastInsertId();
+} else {
+    $deviceId = (int) $device['id'];
 }
-
-$deviceId = (int) $device['id'];
 
 // === 分類 ===
 $stmt = $db->prepare('SELECT server_id, local_udid, type, name, sort_order, is_deleted, created_at, updated_at FROM categories WHERE user_id = ?');

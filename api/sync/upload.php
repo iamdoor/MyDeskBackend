@@ -22,16 +22,19 @@ requireFields($data, ['device_udid', 'changes']);
 
 $db = getDB();
 
-// 取得裝置 ID
+// 取得裝置 ID（不存在則自動註冊）
 $stmt = $db->prepare('SELECT id FROM devices WHERE user_id = ? AND device_udid = ?');
 $stmt->execute([$userId, $data['device_udid']]);
 $device = $stmt->fetch();
 
 if (!$device) {
-    jsonError('裝置未註冊', 404);
+    $platform = $data['platform'] ?? 'ios';
+    $stmt = $db->prepare('INSERT INTO devices (user_id, device_udid, device_name, platform) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$userId, $data['device_udid'], $data['device_name'] ?? '', $platform]);
+    $deviceId = (int) $db->lastInsertId();
+} else {
+    $deviceId = (int) $device['id'];
 }
-
-$deviceId = (int) $device['id'];
 
 $changes = is_string($data['changes']) ? json_decode($data['changes'], true) : $data['changes'];
 if (!is_array($changes)) {

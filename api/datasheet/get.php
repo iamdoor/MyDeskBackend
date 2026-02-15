@@ -45,17 +45,46 @@ $stmt = $db->prepare('
 $stmt->execute([$userId, $localUdid]);
 $sheet['tags'] = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-// 取得 Cell 引用列表
+// 取得 Cell 引用列表（含完整 Cell 資料，供跨裝置同步使用）
 $stmt = $db->prepare('
     SELECT dsc.cell_local_udid, dsc.sort_order,
-           cl.cell_type, cl.title, cl.description, cl.importance
+           cl.server_id, cl.cell_type, cl.title, cl.description, cl.importance,
+           cl.content_json, cl.is_deleted, cl.deleted_at,
+           cl.scheduled_delete, cl.scheduled_delete_at,
+           cl.ai_edited, cl.ai_edited_at,
+           cl.created_at, cl.updated_at
     FROM data_sheet_cells dsc
     LEFT JOIN cells cl ON cl.user_id = ? AND cl.local_udid = dsc.cell_local_udid
     WHERE dsc.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
     ORDER BY dsc.sort_order ASC
 ');
 $stmt->execute([$userId, $userId, $localUdid]);
-$sheet['cells'] = $stmt->fetchAll();
+$cellRows = $stmt->fetchAll();
+
+// 為每個 Cell 附加 tags
+$dsId = $db->prepare('SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?');
+$dsId->execute([$userId, $localUdid]);
+
+foreach ($cellRows as &$cellRow) {
+    $cellUdid = $cellRow['cell_local_udid'];
+    $tagStmt = $db->prepare('
+        SELECT t.name FROM tags t
+        INNER JOIN cell_tags ct ON ct.tag_id = t.id
+        WHERE ct.cell_id = (SELECT id FROM cells WHERE user_id = ? AND local_udid = ?)
+    ');
+    $tagStmt->execute([$userId, $cellUdid]);
+    $cellRow['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
+
+    // content_json 若為字串則解碼為物件
+    if (is_string($cellRow['content_json'])) {
+        $decoded = json_decode($cellRow['content_json'], true);
+        if ($decoded !== null) {
+            $cellRow['content_json'] = $decoded;
+        }
+    }
+}
+unset($cellRow);
+$sheet['cells'] = $cellRows;
 
 // 如果是智慧資料單，取得條件
 if ($sheet['is_smart']) {
