@@ -40,7 +40,7 @@ if ($cell['content_json']) {
 // 取得 tags
 $stmt = $db->prepare('
     SELECT t.name FROM tags t
-    INNER JOIN cell_tags ct ON ct.tag_id = t.id
+    INNER JOIN cell_tags ct ON ct.tag_local_udid = t.local_udid
     INNER JOIN cells c ON c.id = ct.cell_id
     WHERE c.user_id = ? AND c.local_udid = ?
 ');

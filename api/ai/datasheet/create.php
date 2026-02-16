@@ -24,8 +24,8 @@ $result = $helper->create(
     $data['title'],
     $data['description'] ?? null,
     (int) ($data['importance'] ?? 0),
-    isset($data['category_id']) ? (int) $data['category_id'] : null,
-    isset($data['sub_category_id']) ? (int) $data['sub_category_id'] : null,
+    $data['category_id'] ?? null,
+    $data['sub_category_id'] ?? null,
     $tags
 );
 

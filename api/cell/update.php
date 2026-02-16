@@ -10,6 +10,7 @@ require_once __DIR__ . '/../../lib/response.php';
 require_once __DIR__ . '/../../lib/db.php';
 require_once __DIR__ . '/../../lib/auth.php';
 require_once __DIR__ . '/../../lib/sync_helper.php';
+require_once __DIR__ . '/../../lib/tag_helper.php';
 
 requirePost();
 $userId = requireAuth();
@@ -83,19 +84,8 @@ if (array_key_exists('tags', $data)) {
             $tagName = trim($tagName);
             if ($tagName === '') continue;
 
-            $stmt = $db->prepare('SELECT id FROM tags WHERE user_id = ? AND name = ?');
-            $stmt->execute([$userId, $tagName]);
-            $tag = $stmt->fetch();
-
-            if ($tag) {
-                $tagId = (int) $tag['id'];
-            } else {
-                $stmt = $db->prepare('INSERT INTO tags (user_id, name) VALUES (?, ?)');
-                $stmt->execute([$userId, $tagName]);
-                $tagId = (int) $db->lastInsertId();
-            }
-
-            $db->prepare('INSERT IGNORE INTO cell_tags (cell_id, tag_id) VALUES (?, ?)')->execute([$cell['id'], $tagId]);
+            $tagLocalUdid = ensureTagLocalUdid($db, $userId, $tagName);
+            $db->prepare('INSERT IGNORE INTO cell_tags (cell_id, tag_local_udid) VALUES (?, ?)')->execute([$cell['id'], $tagLocalUdid]);
         }
     }
 }

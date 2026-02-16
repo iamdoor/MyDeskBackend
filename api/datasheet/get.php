@@ -25,8 +25,8 @@ $stmt = $db->prepare('
            ds.ai_edited, ds.ai_edited_at, ds.created_at, ds.updated_at,
            c.name AS category_name, sc.name AS sub_category_name
     FROM data_sheets ds
-    LEFT JOIN categories c ON c.id = ds.category_id
-    LEFT JOIN sub_categories sc ON sc.id = ds.sub_category_id
+    LEFT JOIN categories c ON c.local_udid = ds.category_id AND c.user_id = ds.user_id
+    LEFT JOIN sub_categories sc ON sc.local_udid = ds.sub_category_id AND sc.user_id = ds.user_id
     WHERE ds.user_id = ? AND ds.local_udid = ?
 ');
 $stmt->execute([$userId, $localUdid]);
@@ -39,7 +39,7 @@ if (!$sheet) {
 // 取得 tags
 $stmt = $db->prepare('
     SELECT t.name FROM tags t
-    INNER JOIN data_sheet_tags dst ON dst.tag_id = t.id
+    INNER JOIN data_sheet_tags dst ON dst.tag_local_udid = t.local_udid
     WHERE dst.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
 ');
 $stmt->execute([$userId, $localUdid]);
@@ -55,10 +55,10 @@ $stmt = $db->prepare('
            cl.created_at, cl.updated_at
     FROM data_sheet_cells dsc
     LEFT JOIN cells cl ON cl.user_id = ? AND cl.local_udid = dsc.cell_local_udid
-    WHERE dsc.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
+    WHERE dsc.data_sheet_local_udid = ?
     ORDER BY dsc.sort_order ASC
 ');
-$stmt->execute([$userId, $userId, $localUdid]);
+$stmt->execute([$userId, $localUdid]);
 $cellRows = $stmt->fetchAll();
 
 // 為每個 Cell 附加 tags
@@ -67,11 +67,11 @@ $dsId->execute([$userId, $localUdid]);
 
 foreach ($cellRows as &$cellRow) {
     $cellUdid = $cellRow['cell_local_udid'];
-    $tagStmt = $db->prepare('
-        SELECT t.name FROM tags t
-        INNER JOIN cell_tags ct ON ct.tag_id = t.id
-        WHERE ct.cell_id = (SELECT id FROM cells WHERE user_id = ? AND local_udid = ?)
-    ');
+        $tagStmt = $db->prepare('
+            SELECT t.name FROM tags t
+            INNER JOIN cell_tags ct ON ct.tag_local_udid = t.local_udid
+            WHERE ct.cell_id = (SELECT id FROM cells WHERE user_id = ? AND local_udid = ?)
+        ');
     $tagStmt->execute([$userId, $cellUdid]);
     $cellRow['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -91,9 +91,9 @@ if ($sheet['is_smart']) {
     $stmt = $db->prepare('
         SELECT id, condition_type, condition_value
         FROM smart_sheet_conditions
-        WHERE data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
+        WHERE data_sheet_local_udid = ?
     ');
-    $stmt->execute([$userId, $localUdid]);
+    $stmt->execute([$localUdid]);
     $sheet['smart_conditions'] = $stmt->fetchAll();
 }
 

@@ -35,8 +35,8 @@ if (!$sheet['is_smart']) {
 }
 
 // 取得條件
-$stmt = $db->prepare('SELECT condition_type, condition_value FROM smart_sheet_conditions WHERE data_sheet_id = ?');
-$stmt->execute([$sheet['id']]);
+$stmt = $db->prepare('SELECT condition_type, condition_value FROM smart_sheet_conditions WHERE data_sheet_local_udid = ?');
+$stmt->execute([$localUdid]);
 $conditions = $stmt->fetchAll();
 
 $cellUdids = [];
@@ -47,7 +47,7 @@ foreach ($conditions as $cond) {
             $stmt = $db->prepare('
                 SELECT c.local_udid FROM cells c
                 INNER JOIN cell_tags ct ON ct.cell_id = c.id
-                INNER JOIN tags t ON t.id = ct.tag_id
+                INNER JOIN tags t ON t.local_udid = ct.tag_local_udid
                 WHERE c.user_id = ? AND c.is_deleted = 0 AND t.name = ?
             ');
             $stmt->execute([$userId, $cond['condition_value']]);

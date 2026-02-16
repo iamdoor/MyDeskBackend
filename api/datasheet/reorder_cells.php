@@ -16,7 +16,7 @@ requireFields($data, ['local_udid', 'cell_order']);
 
 $db = getDB();
 
-$stmt = $db->prepare('SELECT id, server_id FROM data_sheets WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
+$stmt = $db->prepare('SELECT id, server_id, local_udid FROM data_sheets WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
 $stmt->execute([$userId, $data['local_udid']]);
 $sheet = $stmt->fetch();
 
@@ -29,10 +29,10 @@ if (!is_array($cellOrder)) {
     jsonError('cell_order 必須是陣列');
 }
 
-$updateStmt = $db->prepare('UPDATE data_sheet_cells SET sort_order = ? WHERE data_sheet_id = ? AND cell_local_udid = ?');
+$updateStmt = $db->prepare('UPDATE data_sheet_cells SET sort_order = ? WHERE data_sheet_local_udid = ? AND cell_local_udid = ?');
 
 foreach ($cellOrder as $index => $cellUdid) {
-    $updateStmt->execute([$index, $sheet['id'], $cellUdid]);
+    $updateStmt->execute([$index, $sheet['local_udid'], $cellUdid]);
 }
 
 $db->prepare('UPDATE data_sheets SET updated_at = NOW() WHERE id = ?')->execute([$sheet['id']]);

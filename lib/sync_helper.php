@@ -9,7 +9,7 @@ require_once __DIR__ . '/db.php';
  */
 function writeSyncLog(
     int $userId,
-    ?int $deviceId,
+    ?string $deviceUdid,
     string $entityType,
     string $entityServerId,
     string $entityLocalUdid,
@@ -24,12 +24,12 @@ function writeSyncLog(
     $nextVersion = (int) $stmt->fetchColumn();
 
     $stmt = $db->prepare('
-        INSERT INTO sync_log (user_id, device_id, entity_type, entity_server_id, entity_local_udid, action, sync_version, payload_json, created_at)
+        INSERT INTO sync_log (user_id, device_udid, entity_type, entity_server_id, entity_local_udid, action, sync_version, payload_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ');
     $stmt->execute([
         $userId,
-        $deviceId,
+        $deviceUdid,
         $entityType,
         $entityServerId,
         $entityLocalUdid,

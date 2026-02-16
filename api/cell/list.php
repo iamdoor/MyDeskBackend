@@ -29,7 +29,7 @@ if (empty($_GET['include_deleted'])) {
 
 // 按 tag 篩選
 if (!empty($_GET['tag'])) {
-    $where[] = 'EXISTS (SELECT 1 FROM cell_tags ct INNER JOIN tags t ON t.id = ct.tag_id WHERE ct.cell_id = c.id AND t.name = ?)';
+    $where[] = 'EXISTS (SELECT 1 FROM cell_tags ct INNER JOIN tags t ON t.local_udid = ct.tag_local_udid WHERE ct.cell_id = c.id AND t.name = ?)';
     $params[] = $_GET['tag'];
 }
 
@@ -75,7 +75,7 @@ foreach ($cells as &$cell) {
 
     $tagStmt = $db->prepare('
         SELECT t.name FROM tags t
-        INNER JOIN cell_tags ct ON ct.tag_id = t.id
+        INNER JOIN cell_tags ct ON ct.tag_local_udid = t.local_udid
         INNER JOIN cells c2 ON c2.id = ct.cell_id
         WHERE c2.user_id = ? AND c2.local_udid = ?
     ');

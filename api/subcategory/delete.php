@@ -27,8 +27,8 @@ if (!$sub) {
 $db->prepare('UPDATE sub_categories SET is_deleted = 1, deleted_at = NOW() WHERE id = ?')->execute([$sub['id']]);
 
 // 清除引用此子分類的資料單/桌面
-$db->prepare('UPDATE data_sheets SET sub_category_id = NULL WHERE sub_category_id = ?')->execute([$sub['id']]);
-$db->prepare('UPDATE desktops SET sub_category_id = NULL WHERE sub_category_id = ?')->execute([$sub['id']]);
+$db->prepare('UPDATE data_sheets SET sub_category_id = NULL WHERE sub_category_id = ?')->execute([$data['local_udid']]);
+$db->prepare('UPDATE desktops SET sub_category_id = NULL WHERE sub_category_id = ?')->execute([$data['local_udid']]);
 
 writeSyncLog($userId, null, 'sub_category', $sub['server_id'], $data['local_udid'], 'delete', [
     'local_udid' => $data['local_udid'],

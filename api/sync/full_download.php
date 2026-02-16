@@ -36,12 +36,12 @@ $stmt = $db->prepare('SELECT server_id, local_udid, type, name, sort_order, is_d
 $stmt->execute([$userId]);
 $categories = $stmt->fetchAll();
 
-$stmt = $db->prepare('SELECT sc.server_id, sc.local_udid, sc.category_id, sc.name, sc.sort_order, sc.is_deleted, sc.created_at, sc.updated_at, c.local_udid AS category_local_udid FROM sub_categories sc INNER JOIN categories c ON c.id = sc.category_id WHERE sc.user_id = ?');
+$stmt = $db->prepare('SELECT sc.server_id, sc.local_udid, sc.category_id, sc.name, sc.sort_order, sc.is_deleted, sc.created_at, sc.updated_at, c.local_udid AS category_local_udid FROM sub_categories sc INNER JOIN categories c ON c.local_udid = sc.category_id WHERE sc.user_id = ?');
 $stmt->execute([$userId]);
 $subCategories = $stmt->fetchAll();
 
 // === Tags ===
-$stmt = $db->prepare('SELECT id, name, created_at FROM tags WHERE user_id = ?');
+$stmt = $db->prepare('SELECT id, local_udid, name, created_at FROM tags WHERE user_id = ?');
 $stmt->execute([$userId]);
 $tags = $stmt->fetchAll();
 
@@ -55,7 +55,7 @@ foreach ($cells as &$cell) {
         $cell['content_json'] = json_decode($cell['content_json'], true);
     }
     // 取 tags
-    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN cell_tags ct ON ct.tag_id = t.id INNER JOIN cells c ON c.id = ct.cell_id WHERE c.user_id = ? AND c.local_udid = ?');
+    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN cell_tags ct ON ct.tag_local_udid = t.local_udid INNER JOIN cells c ON c.id = ct.cell_id WHERE c.user_id = ? AND c.local_udid = ?');
     $tagStmt->execute([$userId, $cell['local_udid']]);
     $cell['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
 }
@@ -67,19 +67,19 @@ $dataSheets = $stmt->fetchAll();
 
 foreach ($dataSheets as &$sheet) {
     // Cell 引用
-    $stmt2 = $db->prepare('SELECT cell_local_udid, sort_order FROM data_sheet_cells WHERE data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?) ORDER BY sort_order');
-    $stmt2->execute([$userId, $sheet['local_udid']]);
+    $stmt2 = $db->prepare('SELECT cell_local_udid, sort_order FROM data_sheet_cells WHERE data_sheet_local_udid = ? ORDER BY sort_order');
+    $stmt2->execute([$sheet['local_udid']]);
     $sheet['cells'] = $stmt2->fetchAll();
 
     // Tags
-    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN data_sheet_tags dst ON dst.tag_id = t.id WHERE dst.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)');
+    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN data_sheet_tags dst ON dst.tag_local_udid = t.local_udid WHERE dst.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)');
     $tagStmt->execute([$userId, $sheet['local_udid']]);
     $sheet['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
 
     // 智慧條件
     if ($sheet['is_smart']) {
-        $condStmt = $db->prepare('SELECT condition_type, condition_value FROM smart_sheet_conditions WHERE data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)');
-        $condStmt->execute([$userId, $sheet['local_udid']]);
+        $condStmt = $db->prepare('SELECT condition_type, condition_value FROM smart_sheet_conditions WHERE data_sheet_local_udid = ?');
+        $condStmt->execute([$sheet['local_udid']]);
         $sheet['smart_conditions'] = $condStmt->fetchAll();
     }
 }
@@ -91,8 +91,8 @@ $desktops = $stmt->fetchAll();
 
 foreach ($desktops as &$desktop) {
     // 組件
-    $compStmt = $db->prepare('SELECT server_id, local_udid, component_type, ref_type, ref_local_udid, config_json, sort_order, created_at, updated_at FROM desktop_components WHERE desktop_id = (SELECT id FROM desktops WHERE user_id = ? AND local_udid = ?) ORDER BY sort_order');
-    $compStmt->execute([$userId, $desktop['local_udid']]);
+    $compStmt = $db->prepare('SELECT server_id, local_udid, component_type, ref_type, ref_local_udid, config_json, sort_order, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ? ORDER BY sort_order');
+    $compStmt->execute([$desktop['local_udid']]);
     $desktop['components'] = $compStmt->fetchAll();
 
     foreach ($desktop['components'] as &$comp) {
@@ -102,8 +102,8 @@ foreach ($desktops as &$desktop) {
     }
 
     // 臨時 Cell
-    $tempStmt = $db->prepare('SELECT server_id, local_udid, component_id, cell_type, title, description, content_json, promoted_to_cell_udid, created_at, updated_at FROM desktop_temp_cells WHERE desktop_id = (SELECT id FROM desktops WHERE user_id = ? AND local_udid = ?)');
-    $tempStmt->execute([$userId, $desktop['local_udid']]);
+    $tempStmt = $db->prepare('SELECT server_id, local_udid, component_local_udid, cell_type, title, description, content_json, promoted_to_cell_udid, created_at, updated_at FROM desktop_temp_cells WHERE desktop_local_udid = ?');
+    $tempStmt->execute([$desktop['local_udid']]);
     $desktop['temp_cells'] = $tempStmt->fetchAll();
 
     foreach ($desktop['temp_cells'] as &$tc) {
@@ -113,8 +113,8 @@ foreach ($desktops as &$desktop) {
     }
 
     // Tags
-    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN desktop_tags dt ON dt.tag_id = t.id WHERE dt.desktop_id = (SELECT id FROM desktops WHERE user_id = ? AND local_udid = ?)');
-    $tagStmt->execute([$userId, $desktop['local_udid']]);
+    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN desktop_tags dt ON dt.tag_local_udid = t.local_udid WHERE dt.desktop_local_udid = ?');
+    $tagStmt->execute([$desktop['local_udid']]);
     $desktop['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
 }
 

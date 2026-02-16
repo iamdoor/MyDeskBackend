@@ -10,6 +10,8 @@ require_once __DIR__ . '/../../lib/response.php';
 require_once __DIR__ . '/../../lib/db.php';
 require_once __DIR__ . '/../../lib/auth.php';
 require_once __DIR__ . '/../../lib/sync_helper.php';
+require_once __DIR__ . '/../../lib/category_helper.php';
+require_once __DIR__ . '/../../lib/tag_helper.php';
 
 requirePost();
 $userId = requireAuth();
@@ -46,18 +48,19 @@ foreach ($allowedFields as $field => $type) {
 }
 
 // 分類更新
+$resolvedCategoryUdid = null;
 if (array_key_exists('category_id', $data)) {
     if ($data['category_id'] === null || $data['category_id'] === '') {
         $updates[] = '`category_id` = NULL';
         $updates[] = '`sub_category_id` = NULL';
     } else {
-        $stmt = $db->prepare('SELECT id FROM categories WHERE id = ? AND user_id = ? AND type = "datasheet" AND is_deleted = 0');
-        $stmt->execute([(int) $data['category_id'], $userId]);
-        if (!$stmt->fetch()) {
-            jsonError('分類不存在');
+        $category = findCategory($db, $userId, $data['category_id'], 'datasheet');
+        if (!$category) {
+            jsonError('分類不存在', 404);
         }
+        $resolvedCategoryUdid = $category['local_udid'];
         $updates[] = '`category_id` = ?';
-        $params[] = (int) $data['category_id'];
+        $params[] = $resolvedCategoryUdid;
     }
 }
 
@@ -65,13 +68,24 @@ if (array_key_exists('sub_category_id', $data)) {
     if ($data['sub_category_id'] === null || $data['sub_category_id'] === '') {
         $updates[] = '`sub_category_id` = NULL';
     } else {
-        $stmt = $db->prepare('SELECT id FROM sub_categories WHERE id = ? AND user_id = ? AND is_deleted = 0');
-        $stmt->execute([(int) $data['sub_category_id'], $userId]);
-        if (!$stmt->fetch()) {
-            jsonError('子分類不存在');
+        $sub = findSubCategory($db, $userId, $data['sub_category_id']);
+        if (!$sub) {
+            jsonError('子分類不存在', 404);
+        }
+        $parentCategory = findCategory($db, $userId, $sub['category_id'], 'datasheet');
+        if (!$parentCategory) {
+            jsonError('分類不存在', 404);
+        }
+        if ($resolvedCategoryUdid !== null && $parentCategory['local_udid'] !== $resolvedCategoryUdid) {
+            jsonError('子分類不屬於指定的大分類');
+        }
+        if ($resolvedCategoryUdid === null) {
+            $resolvedCategoryUdid = $parentCategory['local_udid'];
+            $updates[] = '`category_id` = ?';
+            $params[] = $resolvedCategoryUdid;
         }
         $updates[] = '`sub_category_id` = ?';
-        $params[] = (int) $data['sub_category_id'];
+        $params[] = $sub['local_udid'];
     }
 }
 
@@ -91,19 +105,8 @@ if (array_key_exists('tags', $data)) {
             $tagName = trim($tagName);
             if ($tagName === '') continue;
 
-            $stmt = $db->prepare('SELECT id FROM tags WHERE user_id = ? AND name = ?');
-            $stmt->execute([$userId, $tagName]);
-            $tag = $stmt->fetch();
-
-            if ($tag) {
-                $tagId = (int) $tag['id'];
-            } else {
-                $stmt = $db->prepare('INSERT INTO tags (user_id, name) VALUES (?, ?)');
-                $stmt->execute([$userId, $tagName]);
-                $tagId = (int) $db->lastInsertId();
-            }
-
-            $db->prepare('INSERT IGNORE INTO data_sheet_tags (data_sheet_id, tag_id) VALUES (?, ?)')->execute([$sheet['id'], $tagId]);
+            $tagLocalUdid = ensureTagLocalUdid($db, $userId, $tagName);
+            $db->prepare('INSERT IGNORE INTO data_sheet_tags (data_sheet_id, tag_local_udid) VALUES (?, ?)')->execute([$sheet['id'], $tagLocalUdid]);
         }
     }
 }

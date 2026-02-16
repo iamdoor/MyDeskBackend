@@ -35,7 +35,7 @@ foreach ($categories as &$cat) {
         WHERE category_id = ? AND is_deleted = 0
         ORDER BY sort_order ASC, name ASC
     ');
-    $stmt->execute([$cat['id']]);
+    $stmt->execute([$cat['local_udid']]);
     $cat['sub_categories'] = $stmt->fetchAll();
 }
 

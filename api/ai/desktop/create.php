@@ -3,7 +3,7 @@
  * AI 建立桌面
  * POST /api/ai/desktop/create.php
  * 參數: local_udid, title
- * 選填: ui_type, description, importance, tags
+ * 選填: ui_type, description, importance, tags, category_id, sub_category_id
  */
 require_once __DIR__ . '/../../../lib/response.php';
 require_once __DIR__ . '/../../../lib/auth.php';
@@ -25,7 +25,9 @@ $result = $helper->create(
     $data['ui_type'] ?? 'list',
     $data['description'] ?? null,
     (int) ($data['importance'] ?? 0),
-    $tags
+    $tags,
+    $data['category_id'] ?? null,
+    $data['sub_category_id'] ?? null
 );
 
 jsonSuccess($result, 'AI 建立成功', 201);

@@ -23,14 +23,15 @@ requireFields($data, ['device_udid', 'changes']);
 $db = getDB();
 
 // 取得裝置 ID（不存在則自動註冊）
+$deviceUdid = $data['device_udid'];
 $stmt = $db->prepare('SELECT id FROM devices WHERE user_id = ? AND device_udid = ?');
-$stmt->execute([$userId, $data['device_udid']]);
+$stmt->execute([$userId, $deviceUdid]);
 $device = $stmt->fetch();
 
 if (!$device) {
     $platform = $data['platform'] ?? 'ios';
     $stmt = $db->prepare('INSERT INTO devices (user_id, device_udid, device_name, platform) VALUES (?, ?, ?, ?)');
-    $stmt->execute([$userId, $data['device_udid'], $data['device_name'] ?? '', $platform]);
+    $stmt->execute([$userId, $deviceUdid, $data['device_name'] ?? '', $platform]);
     $deviceId = (int) $db->lastInsertId();
 } else {
     $deviceId = (int) $device['id'];
@@ -128,7 +129,7 @@ foreach ($changes as $change) {
                     $sql = "INSERT INTO `$table` (`" . implode('`, `', $columns) . "`) VALUES (" . implode(', ', $placeholders) . ")";
                     $db->prepare($sql)->execute(array_values($changeData));
 
-                    writeSyncLog($userId, $deviceId, $entityType, $serverId, $localUdid, 'create', $changeData);
+                    writeSyncLog($userId, $deviceUdid, $entityType, $serverId, $localUdid, 'create', $changeData);
 
                     $results[] = [
                         'local_udid' => $localUdid,
@@ -155,7 +156,7 @@ foreach ($changes as $change) {
                         $db->prepare($sql)->execute($params);
                     }
 
-                    writeSyncLog($userId, $deviceId, $entityType, $serverRecord['server_id'], $localUdid, 'update', $changeData);
+                    writeSyncLog($userId, $deviceUdid, $entityType, $serverRecord['server_id'], $localUdid, 'update', $changeData);
 
                     $results[] = [
                         'local_udid' => $localUdid,
@@ -168,7 +169,7 @@ foreach ($changes as $change) {
                 if ($table) {
                     $db->prepare("UPDATE `$table` SET is_deleted = 1, deleted_at = NOW() WHERE user_id = ? AND local_udid = ?")->execute([$userId, $localUdid]);
 
-                    writeSyncLog($userId, $deviceId, $entityType, $serverRecord['server_id'] ?? '', $localUdid, 'delete', ['local_udid' => $localUdid]);
+                    writeSyncLog($userId, $deviceUdid, $entityType, $serverRecord['server_id'] ?? '', $localUdid, 'delete', ['local_udid' => $localUdid]);
 
                     $results[] = [
                         'local_udid' => $localUdid,

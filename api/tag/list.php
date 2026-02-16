@@ -12,7 +12,7 @@ $userId = requireAuth();
 
 $db = getDB();
 
-$stmt = $db->prepare('SELECT id, name, created_at FROM tags WHERE user_id = ? ORDER BY name ASC');
+$stmt = $db->prepare('SELECT id, local_udid, name, created_at FROM tags WHERE user_id = ? ORDER BY name ASC');
 $stmt->execute([$userId]);
 
 jsonSuccess(['tags' => $stmt->fetchAll()]);

@@ -10,6 +10,8 @@ require_once __DIR__ . '/../../lib/response.php';
 require_once __DIR__ . '/../../lib/db.php';
 require_once __DIR__ . '/../../lib/auth.php';
 require_once __DIR__ . '/../../lib/sync_helper.php';
+require_once __DIR__ . '/../../lib/category_helper.php';
+require_once __DIR__ . '/../../lib/tag_helper.php';
 
 requirePost();
 $userId = requireAuth();
@@ -27,33 +29,32 @@ if ($stmt->fetch()) {
     jsonError('local_udid 已存在');
 }
 
-// 驗證分類歸屬
-$categoryId = null;
-$subCategoryId = null;
+// 驗證分類歸屬（僅存 local_udid）
+$categoryLocalUdid = null;
+$subCategoryLocalUdid = null;
 
 if (!empty($data['category_id'])) {
-    $stmt = $db->prepare('SELECT id FROM categories WHERE id = ? AND user_id = ? AND type = "datasheet" AND is_deleted = 0');
-    $stmt->execute([(int) $data['category_id'], $userId]);
-    if (!$stmt->fetch()) {
-        jsonError('分類不存在');
+    $category = findCategory($db, $userId, $data['category_id'], 'datasheet');
+    if (!$category) {
+        jsonError('分類不存在', 404);
     }
-    $categoryId = (int) $data['category_id'];
+    $categoryLocalUdid = $category['local_udid'];
 }
 
 if (!empty($data['sub_category_id'])) {
-    $stmt = $db->prepare('SELECT id, category_id FROM sub_categories WHERE id = ? AND user_id = ? AND is_deleted = 0');
-    $stmt->execute([(int) $data['sub_category_id'], $userId]);
-    $sub = $stmt->fetch();
+    $sub = findSubCategory($db, $userId, $data['sub_category_id']);
     if (!$sub) {
-        jsonError('子分類不存在');
+        jsonError('子分類不存在', 404);
     }
-    if ($categoryId && (int) $sub['category_id'] !== $categoryId) {
+    $parentCategory = findCategory($db, $userId, $sub['category_id'], 'datasheet');
+    if (!$parentCategory) {
+        jsonError('分類不存在', 404);
+    }
+    if ($categoryLocalUdid && $parentCategory['local_udid'] !== $categoryLocalUdid) {
         jsonError('子分類不屬於指定的大分類');
     }
-    $subCategoryId = (int) $data['sub_category_id'];
-    if (!$categoryId) {
-        $categoryId = (int) $sub['category_id'];
-    }
+    $categoryLocalUdid = $categoryLocalUdid ?: $parentCategory['local_udid'];
+    $subCategoryLocalUdid = $sub['local_udid'];
 }
 
 $stmt = $db->prepare('
@@ -68,8 +69,8 @@ $stmt->execute([
     $data['title'],
     $data['description'] ?? null,
     (int) ($data['importance'] ?? 0),
-    $categoryId,
-    $subCategoryId,
+    $categoryLocalUdid,
+    $subCategoryLocalUdid,
     (int) ($data['is_smart'] ?? 0),
     (int) ($data['scheduled_delete'] ?? 0),
     $data['scheduled_delete_at'] ?? null,
@@ -85,19 +86,8 @@ if (!empty($data['tags'])) {
             $tagName = trim($tagName);
             if ($tagName === '') continue;
 
-            $stmt = $db->prepare('SELECT id FROM tags WHERE user_id = ? AND name = ?');
-            $stmt->execute([$userId, $tagName]);
-            $tag = $stmt->fetch();
-
-            if ($tag) {
-                $tagId = (int) $tag['id'];
-            } else {
-                $stmt = $db->prepare('INSERT INTO tags (user_id, name) VALUES (?, ?)');
-                $stmt->execute([$userId, $tagName]);
-                $tagId = (int) $db->lastInsertId();
-            }
-
-            $db->prepare('INSERT IGNORE INTO data_sheet_tags (data_sheet_id, tag_id) VALUES (?, ?)')->execute([$sheetId, $tagId]);
+            $tagLocalUdid = ensureTagLocalUdid($db, $userId, $tagName);
+            $db->prepare('INSERT IGNORE INTO data_sheet_tags (data_sheet_id, tag_local_udid) VALUES (?, ?)')->execute([$sheetId, $tagLocalUdid]);
         }
     }
 }

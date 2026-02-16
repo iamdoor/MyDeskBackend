@@ -7,6 +7,7 @@
 require_once __DIR__ . '/../../lib/response.php';
 require_once __DIR__ . '/../../lib/db.php';
 require_once __DIR__ . '/../../lib/auth.php';
+require_once __DIR__ . '/../../lib/category_helper.php';
 
 requireGet();
 $userId = requireAuth();
@@ -20,14 +21,22 @@ if (isset($_GET['category_id'])) {
     if ($_GET['category_id'] === '' || $_GET['category_id'] === 'null') {
         $where[] = 'ds.category_id IS NULL';
     } else {
+        $category = findCategory($db, $userId, $_GET['category_id'], 'datasheet');
+        if (!$category) {
+            jsonError('分類不存在', 404);
+        }
         $where[] = 'ds.category_id = ?';
-        $params[] = (int) $_GET['category_id'];
+        $params[] = $category['local_udid'];
     }
 }
 
 if (isset($_GET['sub_category_id']) && $_GET['sub_category_id'] !== '') {
+    $sub = findSubCategory($db, $userId, $_GET['sub_category_id']);
+    if (!$sub) {
+        jsonError('子分類不存在', 404);
+    }
     $where[] = 'ds.sub_category_id = ?';
-    $params[] = (int) $_GET['sub_category_id'];
+    $params[] = $sub['local_udid'];
 }
 
 if (isset($_GET['is_smart']) && $_GET['is_smart'] !== '') {
@@ -40,7 +49,7 @@ if (empty($_GET['include_deleted'])) {
 }
 
 if (!empty($_GET['tag'])) {
-    $where[] = 'EXISTS (SELECT 1 FROM data_sheet_tags dst INNER JOIN tags t ON t.id = dst.tag_id WHERE dst.data_sheet_id = ds.id AND t.name = ?)';
+    $where[] = 'EXISTS (SELECT 1 FROM data_sheet_tags dst INNER JOIN tags t ON t.local_udid = dst.tag_local_udid WHERE dst.data_sheet_id = ds.id AND t.name = ?)';
     $params[] = $_GET['tag'];
 }
 
@@ -68,8 +77,8 @@ $sql = "
            ds.ai_edited, ds.ai_edited_at, ds.created_at, ds.updated_at,
            c.name AS category_name, sc.name AS sub_category_name
     FROM data_sheets ds
-    LEFT JOIN categories c ON c.id = ds.category_id
-    LEFT JOIN sub_categories sc ON sc.id = ds.sub_category_id
+    LEFT JOIN categories c ON c.local_udid = ds.category_id AND c.user_id = ds.user_id
+    LEFT JOIN sub_categories sc ON sc.local_udid = ds.sub_category_id AND sc.user_id = ds.user_id
     WHERE $whereClause
     ORDER BY ds.updated_at DESC
     LIMIT $perPage OFFSET $offset
@@ -83,7 +92,7 @@ $sheets = $stmt->fetchAll();
 foreach ($sheets as &$sheet) {
     $tagStmt = $db->prepare('
         SELECT t.name FROM tags t
-        INNER JOIN data_sheet_tags dst ON dst.tag_id = t.id
+        INNER JOIN data_sheet_tags dst ON dst.tag_local_udid = t.local_udid
         WHERE dst.data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
     ');
     $tagStmt->execute([$userId, $sheet['local_udid']]);
@@ -92,9 +101,9 @@ foreach ($sheets as &$sheet) {
     // Cell 數量
     $cellCountStmt = $db->prepare('
         SELECT COUNT(*) FROM data_sheet_cells
-        WHERE data_sheet_id = (SELECT id FROM data_sheets WHERE user_id = ? AND local_udid = ?)
+        WHERE data_sheet_local_udid = ?
     ');
-    $cellCountStmt->execute([$userId, $sheet['local_udid']]);
+    $cellCountStmt->execute([$sheet['local_udid']]);
     $sheet['cell_count'] = (int) $cellCountStmt->fetchColumn();
 }
 

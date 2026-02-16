@@ -69,7 +69,7 @@ CREATE TABLE `sub_categories` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `server_id` VARCHAR(36) NOT NULL,
     `local_udid` VARCHAR(36) NOT NULL,
-    `category_id` INT UNSIGNED NOT NULL,
+    `category_id` VARCHAR(36) NOT NULL,
     `user_id` INT UNSIGNED NOT NULL,
     `name` VARCHAR(200) NOT NULL,
     `sort_order` INT NOT NULL DEFAULT 0,
@@ -81,7 +81,6 @@ CREATE TABLE `sub_categories` (
     UNIQUE KEY `uk_server_id` (`server_id`),
     UNIQUE KEY `uk_user_local_udid` (`user_id`, `local_udid`),
     KEY `idx_category` (`category_id`),
-    FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -92,10 +91,12 @@ CREATE TABLE `sub_categories` (
 CREATE TABLE `tags` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `user_id` INT UNSIGNED NOT NULL,
+    `local_udid` VARCHAR(36) NOT NULL,
     `name` VARCHAR(100) NOT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_user_tag` (`user_id`, `name`),
+    UNIQUE KEY `uk_user_tag_name` (`user_id`, `name`),
+    UNIQUE KEY `uk_user_tag_local` (`user_id`, `local_udid`),
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -133,10 +134,9 @@ CREATE TABLE `cells` (
 
 CREATE TABLE `cell_tags` (
     `cell_id` INT UNSIGNED NOT NULL,
-    `tag_id` INT UNSIGNED NOT NULL,
-    PRIMARY KEY (`cell_id`, `tag_id`),
-    FOREIGN KEY (`cell_id`) REFERENCES `cells`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON DELETE CASCADE
+    `tag_local_udid` VARCHAR(36) NOT NULL,
+    PRIMARY KEY (`cell_id`, `tag_local_udid`),
+    FOREIGN KEY (`cell_id`) REFERENCES `cells`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -151,8 +151,8 @@ CREATE TABLE `data_sheets` (
     `title` VARCHAR(500) NOT NULL DEFAULT '',
     `description` TEXT,
     `importance` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    `category_id` INT UNSIGNED DEFAULT NULL,
-    `sub_category_id` INT UNSIGNED DEFAULT NULL,
+    `category_id` VARCHAR(36) DEFAULT NULL,
+    `sub_category_id` VARCHAR(36) DEFAULT NULL,
     `is_smart` TINYINT(1) NOT NULL DEFAULT 0,
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
     `deleted_at` DATETIME DEFAULT NULL,
@@ -169,40 +169,35 @@ CREATE TABLE `data_sheets` (
     KEY `idx_user_deleted` (`user_id`, `is_deleted`),
     KEY `idx_user_updated` (`user_id`, `updated_at`),
     KEY `idx_scheduled_delete` (`scheduled_delete`, `scheduled_delete_at`),
-    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL,
-    FOREIGN KEY (`sub_category_id`) REFERENCES `sub_categories`(`id`) ON DELETE SET NULL
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `data_sheet_tags` (
     `data_sheet_id` INT UNSIGNED NOT NULL,
-    `tag_id` INT UNSIGNED NOT NULL,
-    PRIMARY KEY (`data_sheet_id`, `tag_id`),
-    FOREIGN KEY (`data_sheet_id`) REFERENCES `data_sheets`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON DELETE CASCADE
+    `tag_local_udid` VARCHAR(36) NOT NULL,
+    PRIMARY KEY (`data_sheet_id`, `tag_local_udid`),
+    FOREIGN KEY (`data_sheet_id`) REFERENCES `data_sheets`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `data_sheet_cells` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `data_sheet_id` INT UNSIGNED NOT NULL,
+    `data_sheet_local_udid` VARCHAR(36) NOT NULL,
     `cell_local_udid` VARCHAR(36) NOT NULL,
     `sort_order` INT NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_sheet_cell` (`data_sheet_id`, `cell_local_udid`),
-    FOREIGN KEY (`data_sheet_id`) REFERENCES `data_sheets`(`id`) ON DELETE CASCADE
+    UNIQUE KEY `uk_sheet_cell` (`data_sheet_local_udid`, `cell_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `smart_sheet_conditions` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `data_sheet_id` INT UNSIGNED NOT NULL,
+    `data_sheet_local_udid` VARCHAR(36) NOT NULL,
     `condition_type` ENUM('tag', 'keyword', 'reference') NOT NULL,
     `condition_value` VARCHAR(500) NOT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    KEY `idx_sheet` (`data_sheet_id`),
-    FOREIGN KEY (`data_sheet_id`) REFERENCES `data_sheets`(`id`) ON DELETE CASCADE
+    KEY `idx_sheet` (`data_sheet_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -217,8 +212,8 @@ CREATE TABLE `desktops` (
     `title` VARCHAR(500) NOT NULL DEFAULT '',
     `description` TEXT,
     `importance` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    `category_id` INT UNSIGNED DEFAULT NULL,
-    `sub_category_id` INT UNSIGNED DEFAULT NULL,
+    `category_id` VARCHAR(36) DEFAULT NULL,
+    `sub_category_id` VARCHAR(36) DEFAULT NULL,
     `ui_type` VARCHAR(50) NOT NULL DEFAULT 'list',
     `is_favorite` TINYINT(1) NOT NULL DEFAULT 0,
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
@@ -236,24 +231,20 @@ CREATE TABLE `desktops` (
     KEY `idx_user_deleted` (`user_id`, `is_deleted`),
     KEY `idx_user_updated` (`user_id`, `updated_at`),
     KEY `idx_scheduled_delete` (`scheduled_delete`, `scheduled_delete_at`),
-    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL,
-    FOREIGN KEY (`sub_category_id`) REFERENCES `sub_categories`(`id`) ON DELETE SET NULL
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `desktop_tags` (
-    `desktop_id` INT UNSIGNED NOT NULL,
-    `tag_id` INT UNSIGNED NOT NULL,
-    PRIMARY KEY (`desktop_id`, `tag_id`),
-    FOREIGN KEY (`desktop_id`) REFERENCES `desktops`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON DELETE CASCADE
+    `desktop_local_udid` VARCHAR(36) NOT NULL,
+    `tag_local_udid` VARCHAR(36) NOT NULL,
+    PRIMARY KEY (`desktop_local_udid`, `tag_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `desktop_components` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `server_id` VARCHAR(36) NOT NULL,
     `local_udid` VARCHAR(36) NOT NULL,
-    `desktop_id` INT UNSIGNED NOT NULL,
+    `desktop_local_udid` VARCHAR(36) NOT NULL,
     `component_type` VARCHAR(100) NOT NULL,
     `ref_type` ENUM('cell', 'datasheet', 'temp') NOT NULL,
     `ref_local_udid` VARCHAR(36) DEFAULT NULL,
@@ -263,16 +254,15 @@ CREATE TABLE `desktop_components` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_server_id` (`server_id`),
-    KEY `idx_desktop` (`desktop_id`),
-    FOREIGN KEY (`desktop_id`) REFERENCES `desktops`(`id`) ON DELETE CASCADE
+    KEY `idx_desktop` (`desktop_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `desktop_temp_cells` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `server_id` VARCHAR(36) NOT NULL,
     `local_udid` VARCHAR(36) NOT NULL,
-    `desktop_id` INT UNSIGNED NOT NULL,
-    `component_id` INT UNSIGNED NOT NULL,
+    `desktop_local_udid` VARCHAR(36) NOT NULL,
+    `component_local_udid` VARCHAR(36) NOT NULL,
     `cell_type` INT UNSIGNED NOT NULL,
     `title` VARCHAR(500) NOT NULL DEFAULT '',
     `description` TEXT,
@@ -282,10 +272,8 @@ CREATE TABLE `desktop_temp_cells` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_server_id` (`server_id`),
-    KEY `idx_desktop` (`desktop_id`),
-    KEY `idx_component` (`component_id`),
-    FOREIGN KEY (`desktop_id`) REFERENCES `desktops`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`component_id`) REFERENCES `desktop_components`(`id`) ON DELETE CASCADE
+    KEY `idx_desktop` (`desktop_local_udid`),
+    KEY `idx_component` (`component_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -295,7 +283,7 @@ CREATE TABLE `desktop_temp_cells` (
 CREATE TABLE `sync_log` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `user_id` INT UNSIGNED NOT NULL,
-    `device_id` INT UNSIGNED DEFAULT NULL,
+    `device_udid` VARCHAR(100) DEFAULT NULL,
     `entity_type` ENUM(
         'cell', 'datasheet', 'desktop',
         'category', 'sub_category', 'tag',
@@ -312,6 +300,7 @@ CREATE TABLE `sync_log` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_user_version` (`user_id`, `sync_version`),
+    KEY `idx_device` (`device_udid`),
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -352,7 +341,7 @@ CREATE TABLE `ai_messages` (
 
 CREATE TABLE `ai_preset_prompts` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `context_type` ENUM('datasheet', 'desktop') NOT NULL,
+    `context_type` ENUM('cell', 'datasheet', 'desktop') NOT NULL,
     `prompt_text` TEXT NOT NULL,
     `sort_order` INT NOT NULL DEFAULT 0,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,

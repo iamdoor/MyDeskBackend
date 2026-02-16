@@ -12,8 +12,8 @@ requireGet();
 requireAuth();
 
 $contextType = $_GET['context_type'] ?? '';
-if (!in_array($contextType, ['datasheet', 'desktop'])) {
-    jsonError('context_type 必須為 datasheet 或 desktop');
+if (!in_array($contextType, ['cell', 'datasheet', 'desktop'])) {
+    jsonError('context_type 必須為 cell、datasheet 或 desktop');
 }
 
 $db = getDB();

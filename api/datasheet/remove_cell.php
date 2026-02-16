@@ -16,7 +16,7 @@ requireFields($data, ['local_udid', 'cell_local_udid']);
 
 $db = getDB();
 
-$stmt = $db->prepare('SELECT id, server_id FROM data_sheets WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
+$stmt = $db->prepare('SELECT id, server_id, local_udid FROM data_sheets WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
 $stmt->execute([$userId, $data['local_udid']]);
 $sheet = $stmt->fetch();
 
@@ -24,8 +24,8 @@ if (!$sheet) {
     jsonError('資料單不存在', 404);
 }
 
-$stmt = $db->prepare('DELETE FROM data_sheet_cells WHERE data_sheet_id = ? AND cell_local_udid = ?');
-$stmt->execute([$sheet['id'], $data['cell_local_udid']]);
+$stmt = $db->prepare('DELETE FROM data_sheet_cells WHERE data_sheet_local_udid = ? AND cell_local_udid = ?');
+$stmt->execute([$sheet['local_udid'], $data['cell_local_udid']]);
 
 if ($stmt->rowCount() === 0) {
     jsonError('Cell 不在此資料單中', 404);
