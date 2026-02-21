@@ -40,8 +40,8 @@ if (is_string($contentJson)) {
 }
 
 $stmt = $db->prepare('
-    INSERT INTO cells (server_id, local_udid, user_id, cell_type, title, description, importance, content_json, scheduled_delete, scheduled_delete_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cells (server_id, local_udid, user_id, cell_type, title, description, importance, content_json, desktop_origin, scheduled_delete, scheduled_delete_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ');
 $stmt->execute([
     $serverId,
@@ -52,6 +52,7 @@ $stmt->execute([
     $data['description'] ?? null,
     (int) ($data['importance'] ?? 0),
     $contentJson,
+    (int) ($data['desktop_origin'] ?? 0),
     (int) ($data['scheduled_delete'] ?? 0),
     $data['scheduled_delete_at'] ?? null,
 ]);

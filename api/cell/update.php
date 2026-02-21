@@ -35,6 +35,7 @@ $allowedFields = [
     'title' => 'string',
     'description' => 'string',
     'importance' => 'int',
+    'desktop_origin' => 'int',
     'scheduled_delete' => 'int',
     'scheduled_delete_at' => 'string',
 ];

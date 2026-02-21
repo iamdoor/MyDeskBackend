@@ -20,7 +20,7 @@ $db = getDB();
 
 $stmt = $db->prepare('
     SELECT server_id, local_udid, cell_type, title, description, importance,
-           content_json, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at,
+           content_json, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at,
            ai_edited, ai_edited_at, created_at, updated_at
     FROM cells
     WHERE user_id = ? AND local_udid = ?

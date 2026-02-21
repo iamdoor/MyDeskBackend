@@ -63,7 +63,7 @@ $stmt->execute([$userId, $lastSyncAt]);
 $tags = $stmt->fetchAll();
 
 // Cells
-$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ? AND updated_at > ?');
+$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ? AND updated_at > ?');
 $stmt->execute([$userId, $lastSyncAt]);
 $cells = $stmt->fetchAll();
 
@@ -116,7 +116,6 @@ $desktops = $stmt->fetchAll();
 $desktopCells = [];
 $desktopComponents = [];
 $desktopComponentLinks = [];
-$desktopTempCells = [];
 
 foreach ($desktops as &$desktop) {
     $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN desktop_tags dt ON dt.tag_local_udid = t.local_udid WHERE dt.desktop_local_udid = ? AND t.user_id = ?');
@@ -150,20 +149,6 @@ foreach ($desktops as &$desktop) {
     }
     unset($comp);
     $desktop['components'] = $components;
-
-    // 暫時 Cell
-    $stmt2 = $db->prepare('SELECT desktop_local_udid, server_id, local_udid, cell_type, title, description, content_json, promoted_to_cell_udid, created_at, updated_at FROM desktop_temp_cells WHERE desktop_local_udid = ?');
-    $stmt2->execute([$desktop['local_udid']]);
-    $tempCells = $stmt2->fetchAll();
-    foreach ($tempCells as &$tc) {
-        if (is_string($tc['content_json'])) {
-            $decoded = json_decode($tc['content_json'], true);
-            if ($decoded !== null) $tc['content_json'] = $decoded;
-        }
-        $desktopTempCells[] = $tc;
-    }
-    unset($tc);
-    $desktop['temp_cells'] = $tempCells;
 }
 unset($desktop);
 
@@ -178,8 +163,7 @@ $totalCount = count($categories)
     + count($desktops)
     + count($desktopComponents)
     + count($desktopCells)
-    + count($desktopComponentLinks)
-    + count($desktopTempCells);
+    + count($desktopComponentLinks);
 
 jsonSuccess([
     'categories' => $categories,
@@ -191,7 +175,6 @@ jsonSuccess([
     'desktop_cells' => $desktopCells,
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,
-    'desktop_temp_cells' => $desktopTempCells,
     'server_now' => $serverNow,
     'count' => $totalCount,
 ]);

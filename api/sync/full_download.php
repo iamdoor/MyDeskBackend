@@ -46,7 +46,7 @@ $stmt->execute([$userId]);
 $tags = $stmt->fetchAll();
 
 // === Cells ===
-$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ?');
+$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ?');
 $stmt->execute([$userId]);
 $cells = $stmt->fetchAll();
 
@@ -100,7 +100,6 @@ $desktops = $stmt->fetchAll();
 $desktopCells = [];
 $desktopComponents = [];
 $desktopComponentLinks = [];
-$desktopTempCells = [];
 
 foreach ($desktops as &$desktop) {
     // Tags
@@ -135,20 +134,6 @@ foreach ($desktops as &$desktop) {
     }
     unset($comp);
     $desktop['components'] = $components;
-
-    // 暫時 Cell
-    $tempStmt = $db->prepare('SELECT desktop_local_udid, server_id, local_udid, cell_type, title, description, content_json, promoted_to_cell_udid, created_at, updated_at FROM desktop_temp_cells WHERE desktop_local_udid = ?');
-    $tempStmt->execute([$desktop['local_udid']]);
-    $tempCells = $tempStmt->fetchAll();
-    foreach ($tempCells as &$tc) {
-        if (is_string($tc['content_json'])) {
-            $decoded = json_decode($tc['content_json'], true);
-            if ($decoded !== null) $tc['content_json'] = $decoded;
-        }
-        $desktopTempCells[] = $tc;
-    }
-    unset($tc);
-    $desktop['temp_cells'] = $tempCells;
 }
 
 // === AI 對話 ===
@@ -184,7 +169,6 @@ jsonSuccess([
     'desktop_cells' => $desktopCells,
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,
-    'desktop_temp_cells' => $desktopTempCells,
     'ai_conversations' => $aiConversations,
     'server_now' => $serverNow,
 ]);
