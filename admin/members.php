@@ -107,6 +107,7 @@ $members = $stmt->fetchAll();
     <div class="nav">
         <a href="dashboard.php">儀表板</a>
         <a href="members.php" class="active">會員管理</a>
+        <a href="color_schemes.php">配色表管理</a>
     </div>
     <div class="container">
         <form class="search-bar" method="GET">

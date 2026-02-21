@@ -111,6 +111,64 @@ foreach ($changes as $change) {
         }
     }
 
+    // 關聯型實體（無 user_id / server_id / conflict 機制）
+    if (in_array($entityType, ['datasheet_cell', 'desktop_cell', 'desktop_component_link'])) {
+        try {
+            switch ($entityType) {
+                case 'datasheet_cell':
+                    $dsUdid   = $changeData['data_sheet_local_udid'] ?? '';
+                    $cellUdid = $changeData['cell_local_udid'] ?? '';
+                    if (!$dsUdid || !$cellUdid) throw new Exception('缺少 data_sheet_local_udid 或 cell_local_udid');
+                    if ($action === 'remove') {
+                        $db->prepare('DELETE FROM data_sheet_cells WHERE data_sheet_local_udid = ? AND cell_local_udid = ?')
+                           ->execute([$dsUdid, $cellUdid]);
+                    } else {
+                        $sortOrder = $changeData['sort_order'] ?? 0;
+                        $db->prepare('INSERT INTO data_sheet_cells (data_sheet_local_udid, cell_local_udid, sort_order) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)')
+                           ->execute([$dsUdid, $cellUdid, $sortOrder]);
+                    }
+                    break;
+
+                case 'desktop_cell':
+                    $desktopUdid  = $changeData['desktop_local_udid'] ?? '';
+                    $refLocalUdid = $changeData['ref_local_udid'] ?? '';
+                    $refType      = $changeData['ref_type'] ?? 'cell';
+                    if (!$desktopUdid || !$refLocalUdid) throw new Exception('缺少 desktop_local_udid 或 ref_local_udid');
+                    if ($action === 'remove') {
+                        $db->prepare('DELETE FROM desktop_cells WHERE desktop_local_udid = ? AND ref_local_udid = ?')
+                           ->execute([$desktopUdid, $refLocalUdid]);
+                    } else {
+                        $db->prepare('INSERT IGNORE INTO desktop_cells (desktop_local_udid, ref_type, ref_local_udid, created_at) VALUES (?, ?, ?, NOW())')
+                           ->execute([$desktopUdid, $refType, $refLocalUdid]);
+                    }
+                    break;
+
+                case 'desktop_component_link':
+                    $compUdid     = $changeData['component_local_udid'] ?? '';
+                    $refLocalUdid = $changeData['ref_local_udid'] ?? '';
+                    $refType      = $changeData['ref_type'] ?? 'cell';
+                    $sortOrder    = $changeData['sort_order'] ?? 0;
+                    if (!$compUdid || !$refLocalUdid) throw new Exception('缺少 component_local_udid 或 ref_local_udid');
+                    if ($action === 'remove') {
+                        $db->prepare('DELETE FROM desktop_component_links WHERE local_udid = ?')
+                           ->execute([$localUdid]);
+                    } elseif ($action === 'update') {
+                        $db->prepare('UPDATE desktop_component_links SET sort_order = ?, updated_at = NOW() WHERE local_udid = ?')
+                           ->execute([$sortOrder, $localUdid]);
+                    } else {
+                        $now = date('Y-m-d H:i:s');
+                        $db->prepare('INSERT IGNORE INTO desktop_component_links (local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                           ->execute([$localUdid, $compUdid, $refType, $refLocalUdid, $sortOrder, $now, $now]);
+                    }
+                    break;
+            }
+            $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+        } catch (Exception $e) {
+            $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => $e->getMessage()];
+        }
+        continue;
+    }
+
     // 處理變更
     try {
         switch ($action) {

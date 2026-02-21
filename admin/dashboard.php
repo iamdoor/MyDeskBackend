@@ -48,6 +48,7 @@ $desktopCount = (int) $db->query('SELECT COUNT(*) FROM desktops WHERE is_deleted
     <div class="nav">
         <a href="dashboard.php" class="active">儀表板</a>
         <a href="members.php">會員管理</a>
+        <a href="color_schemes.php">配色表管理</a>
     </div>
     <div class="container">
         <div class="stats">

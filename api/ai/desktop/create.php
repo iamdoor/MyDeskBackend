@@ -2,8 +2,8 @@
 /**
  * AI 建立桌面
  * POST /api/ai/desktop/create.php
- * 參數: local_udid, title
- * 選填: ui_type, description, importance, tags, category_id, sub_category_id
+ * 必填: local_udid, title
+ * 選填: desktop_type_code, description, importance, tags, category_id, sub_category_id
  */
 require_once __DIR__ . '/../../../lib/response.php';
 require_once __DIR__ . '/../../../lib/auth.php';
@@ -22,7 +22,7 @@ if (is_string($tags)) $tags = json_decode($tags, true) ?: [];
 $result = $helper->create(
     $data['local_udid'],
     $data['title'],
-    $data['ui_type'] ?? 'list',
+    $data['desktop_type_code'] ?? 'single_column',
     $data['description'] ?? null,
     (int) ($data['importance'] ?? 0),
     $tags,

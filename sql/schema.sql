@@ -204,6 +204,68 @@ CREATE TABLE `smart_sheet_conditions` (
 -- 桌面 (Desktop)
 -- ============================================================
 
+CREATE TABLE `desktop_types` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `code` VARCHAR(50) NOT NULL,
+    `name` VARCHAR(100) NOT NULL,
+    `max_columns` TINYINT NOT NULL DEFAULT 1,
+    `config_schema` JSON DEFAULT NULL,
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `desktop_types` (`code`, `name`, `max_columns`, `config_schema`, `is_active`, `sort_order`) VALUES
+('single_column',   '單排列表',   1, NULL, 1, 1),
+('double_column',   '雙排列表',   2, NULL, 1, 2),
+('triple_column',   '三排列表',   3, NULL, 1, 3),
+('horizontal_list', '橫向列表',   0, '{"rows": []}', 1, 4),
+('mixed',           '橫直混合',   3, '{"horizontal_rows": [], "vertical_columns": 1}', 1, 5);
+
+CREATE TABLE `component_types` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `code` VARCHAR(50) NOT NULL,
+    `name` VARCHAR(100) NOT NULL,
+    `category` ENUM('general', 'special') NOT NULL DEFAULT 'general',
+    `allowed_cell_types` JSON DEFAULT NULL,
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `component_types` (`code`, `name`, `category`, `allowed_cell_types`, `is_active`, `sort_order`) VALUES
+('free_block',        '自由方塊', 'general', NULL,        1, 1),
+('list_block',        '列表方塊', 'general', NULL,        1, 2),
+('album_block',       '相簿方塊', 'general', '[2,3,5]',   1, 3),
+('image_text_block',  '圖文方塊', 'general', NULL,        1, 4);
+
+CREATE TABLE `color_schemes` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `name` VARCHAR(100) NOT NULL,
+    `bg_color` VARCHAR(20) NOT NULL DEFAULT '#FFFFFF',
+    `primary_color` VARCHAR(20) NOT NULL DEFAULT '#000000',
+    `secondary_color` VARCHAR(20) NOT NULL DEFAULT '#666666',
+    `accent_color` VARCHAR(20) NOT NULL DEFAULT '#007AFF',
+    `text_color` VARCHAR(20) NOT NULL DEFAULT '#000000',
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `color_schemes` (`name`, `bg_color`, `primary_color`, `secondary_color`, `accent_color`, `text_color`, `sort_order`) VALUES
+('預設白',   '#FFFFFF', '#1A1A1A', '#6B6B6B', '#007AFF', '#1A1A1A', 1),
+('深夜黑',   '#1C1C1E', '#FFFFFF', '#AEAEB2', '#0A84FF', '#FFFFFF', 2),
+('海洋藍',   '#EBF4FF', '#1A3A5C', '#4A7FA5', '#0066CC', '#1A3A5C', 3),
+('森林綠',   '#EDF5ED', '#1A3A1A', '#4A7A4A', '#2E7D32', '#1A3A1A', 4),
+('暖橘橙',   '#FFF4ED', '#3A1A00', '#A0522D', '#FF6600', '#3A1A00', 5),
+('薰衣紫',   '#F4EDFF', '#2A0A5C', '#7A4FA5', '#6200EA', '#2A0A5C', 6),
+('玫瑰粉',   '#FFEDEE', '#5C0A0A', '#A54A4A', '#E53935', '#5C0A0A', 7),
+('沙漠金',   '#FFF9E6', '#3A2A00', '#8B6914', '#F9A825', '#3A2A00', 8);
+
 CREATE TABLE `desktops` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `server_id` VARCHAR(36) NOT NULL,
@@ -214,7 +276,14 @@ CREATE TABLE `desktops` (
     `importance` TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `category_id` VARCHAR(36) DEFAULT NULL,
     `sub_category_id` VARCHAR(36) DEFAULT NULL,
-    `ui_type` VARCHAR(50) NOT NULL DEFAULT 'list',
+    `desktop_type_code` VARCHAR(50) NOT NULL DEFAULT 'single_column',
+    `mixed_vertical_columns` TINYINT DEFAULT NULL,
+    `color_scheme_id` INT UNSIGNED DEFAULT NULL,
+    `custom_bg_color` VARCHAR(20) DEFAULT NULL,
+    `custom_primary_color` VARCHAR(20) DEFAULT NULL,
+    `custom_secondary_color` VARCHAR(20) DEFAULT NULL,
+    `custom_accent_color` VARCHAR(20) DEFAULT NULL,
+    `custom_text_color` VARCHAR(20) DEFAULT NULL,
     `is_favorite` TINYINT(1) NOT NULL DEFAULT 0,
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
     `deleted_at` DATETIME DEFAULT NULL,
@@ -240,21 +309,49 @@ CREATE TABLE `desktop_tags` (
     PRIMARY KEY (`desktop_local_udid`, `tag_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE `desktop_cells` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `desktop_local_udid` VARCHAR(36) NOT NULL,
+    `ref_type` ENUM('cell', 'datasheet') NOT NULL DEFAULT 'cell',
+    `ref_local_udid` VARCHAR(36) NOT NULL,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_desktop_ref` (`desktop_local_udid`, `ref_local_udid`),
+    KEY `idx_desktop` (`desktop_local_udid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `desktop_components` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `server_id` VARCHAR(36) NOT NULL,
     `local_udid` VARCHAR(36) NOT NULL,
     `desktop_local_udid` VARCHAR(36) NOT NULL,
-    `component_type` VARCHAR(100) NOT NULL,
-    `ref_type` ENUM('cell', 'datasheet', 'temp') NOT NULL,
-    `ref_local_udid` VARCHAR(36) DEFAULT NULL,
+    `component_type_code` VARCHAR(50) NOT NULL DEFAULT 'free_block',
+    `bg_color` VARCHAR(20) DEFAULT NULL,
+    `border_color` VARCHAR(20) DEFAULT NULL,
+    `border_width` TINYINT NOT NULL DEFAULT 0,
+    `corner_radius` TINYINT NOT NULL DEFAULT 0,
     `config_json` JSON DEFAULT NULL,
-    `sort_order` INT NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_server_id` (`server_id`),
+    UNIQUE KEY `uk_local_udid` (`local_udid`),
     KEY `idx_desktop` (`desktop_local_udid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `desktop_component_links` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `local_udid` VARCHAR(36) NOT NULL,
+    `component_local_udid` VARCHAR(36) NOT NULL,
+    `ref_type` ENUM('cell', 'datasheet', 'temp') NOT NULL DEFAULT 'cell',
+    `ref_local_udid` VARCHAR(36) NOT NULL,
+    `sort_order` INT NOT NULL DEFAULT 0,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_local_udid` (`local_udid`),
+    UNIQUE KEY `uk_component_ref` (`component_local_udid`, `ref_local_udid`),
+    KEY `idx_component` (`component_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `desktop_temp_cells` (
@@ -262,7 +359,6 @@ CREATE TABLE `desktop_temp_cells` (
     `server_id` VARCHAR(36) NOT NULL,
     `local_udid` VARCHAR(36) NOT NULL,
     `desktop_local_udid` VARCHAR(36) NOT NULL,
-    `component_local_udid` VARCHAR(36) NOT NULL,
     `cell_type` INT UNSIGNED NOT NULL,
     `title` VARCHAR(500) NOT NULL DEFAULT '',
     `description` TEXT,
@@ -272,8 +368,7 @@ CREATE TABLE `desktop_temp_cells` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_server_id` (`server_id`),
-    KEY `idx_desktop` (`desktop_local_udid`),
-    KEY `idx_component` (`component_local_udid`)
+    KEY `idx_desktop` (`desktop_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -288,6 +383,7 @@ CREATE TABLE `sync_log` (
         'cell', 'datasheet', 'desktop',
         'category', 'sub_category', 'tag',
         'desktop_component', 'desktop_temp_cell',
+        'desktop_cells', 'desktop_component_links',
         'data_sheet_cells', 'smart_sheet_conditions',
         'ai_conversation', 'ai_message',
         'cell_tags', 'data_sheet_tags', 'desktop_tags'

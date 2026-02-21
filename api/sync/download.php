@@ -100,10 +100,86 @@ foreach ($dataSheets as &$sheet) {
     }
 }
 
+// Desktops
+$stmt = $db->prepare('
+    SELECT server_id, local_udid, title, description, importance,
+           category_id, sub_category_id, desktop_type_code, mixed_vertical_columns,
+           color_scheme_id, custom_bg_color, custom_primary_color, custom_secondary_color,
+           custom_accent_color, custom_text_color, is_favorite,
+           is_deleted, deleted_at, scheduled_delete, scheduled_delete_at,
+           ai_edited, ai_edited_at, created_at, updated_at
+    FROM desktops WHERE user_id = ? AND updated_at > ?
+');
+$stmt->execute([$userId, $lastSyncAt]);
+$desktops = $stmt->fetchAll();
+
+$desktopCells = [];
+$desktopComponents = [];
+$desktopComponentLinks = [];
+$desktopTempCells = [];
+
+foreach ($desktops as &$desktop) {
+    $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN desktop_tags dt ON dt.tag_local_udid = t.local_udid WHERE dt.desktop_local_udid = ? AND t.user_id = ?');
+    $tagStmt->execute([$desktop['local_udid'], $userId]);
+    $desktop['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
+
+    // Cell 池
+    $stmt2 = $db->prepare('SELECT desktop_local_udid, ref_type, ref_local_udid, created_at FROM desktop_cells WHERE desktop_local_udid = ?');
+    $stmt2->execute([$desktop['local_udid']]);
+    $desktop['cells'] = $stmt2->fetchAll();
+    foreach ($desktop['cells'] as $cellRef) {
+        $desktopCells[] = $cellRef;
+    }
+
+    // 組件
+    $stmt2 = $db->prepare('SELECT desktop_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
+    $stmt2->execute([$desktop['local_udid']]);
+    $components = $stmt2->fetchAll();
+    foreach ($components as &$comp) {
+        $desktopComponents[] = $comp;
+        if (is_string($comp['config_json'])) {
+            $decoded = json_decode($comp['config_json'], true);
+            if ($decoded !== null) $comp['config_json'] = $decoded;
+        }
+        $linkStmt = $db->prepare('SELECT local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at FROM desktop_component_links WHERE component_local_udid = ? ORDER BY sort_order');
+        $linkStmt->execute([$comp['local_udid']]);
+        $comp['links'] = $linkStmt->fetchAll();
+        foreach ($comp['links'] as $link) {
+            $desktopComponentLinks[] = $link;
+        }
+    }
+    unset($comp);
+    $desktop['components'] = $components;
+
+    // 暫時 Cell
+    $stmt2 = $db->prepare('SELECT desktop_local_udid, server_id, local_udid, cell_type, title, description, content_json, promoted_to_cell_udid, created_at, updated_at FROM desktop_temp_cells WHERE desktop_local_udid = ?');
+    $stmt2->execute([$desktop['local_udid']]);
+    $tempCells = $stmt2->fetchAll();
+    foreach ($tempCells as &$tc) {
+        if (is_string($tc['content_json'])) {
+            $decoded = json_decode($tc['content_json'], true);
+            if ($decoded !== null) $tc['content_json'] = $decoded;
+        }
+        $desktopTempCells[] = $tc;
+    }
+    unset($tc);
+    $desktop['temp_cells'] = $tempCells;
+}
+unset($desktop);
+
 // 更新裝置同步時間
 $db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
-$totalCount = count($categories) + count($subCategories) + count($tags) + count($cells) + count($dataSheets);
+$totalCount = count($categories)
+    + count($subCategories)
+    + count($tags)
+    + count($cells)
+    + count($dataSheets)
+    + count($desktops)
+    + count($desktopComponents)
+    + count($desktopCells)
+    + count($desktopComponentLinks)
+    + count($desktopTempCells);
 
 jsonSuccess([
     'categories' => $categories,
@@ -111,6 +187,11 @@ jsonSuccess([
     'tags' => $tags,
     'cells' => $cells,
     'data_sheets' => $dataSheets,
+    'desktops' => $desktops,
+    'desktop_cells' => $desktopCells,
+    'desktop_components' => $desktopComponents,
+    'desktop_component_links' => $desktopComponentLinks,
+    'desktop_temp_cells' => $desktopTempCells,
     'server_now' => $serverNow,
     'count' => $totalCount,
 ]);

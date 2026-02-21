@@ -366,28 +366,22 @@ class DesktopAIHelper {
         $this->userId = $userId;
     }
 
-    public function create(string $localUdid, string $title, string $uiType = 'list', ?string $description = null, int $importance = 0, array $tags = [], $categoryIdentifier = null, $subCategoryIdentifier = null): array {
+    public function create(string $localUdid, string $title, string $desktopTypeCode = 'single_column', ?string $description = null, int $importance = 0, array $tags = [], $categoryIdentifier = null, $subCategoryIdentifier = null): array {
         $serverId = generateUUID();
 
         $categoryLocalUdid = null;
         if ($categoryIdentifier !== null && $categoryIdentifier !== '') {
             $category = findCategory($this->db, $this->userId, $categoryIdentifier, 'desktop');
-            if (!$category) {
-                jsonError('分類不存在', 404);
-            }
+            if (!$category) jsonError('分類不存在', 404);
             $categoryLocalUdid = $category['local_udid'];
         }
 
         $subCategoryLocalUdid = null;
         if ($subCategoryIdentifier !== null && $subCategoryIdentifier !== '') {
             $sub = findSubCategory($this->db, $this->userId, $subCategoryIdentifier);
-            if (!$sub) {
-                jsonError('子分類不存在', 404);
-            }
+            if (!$sub) jsonError('子分類不存在', 404);
             $parent = findCategory($this->db, $this->userId, $sub['category_id'], 'desktop');
-            if (!$parent) {
-                jsonError('分類不存在', 404);
-            }
+            if (!$parent) jsonError('分類不存在', 404);
             if ($categoryLocalUdid && $parent['local_udid'] !== $categoryLocalUdid) {
                 jsonError('子分類不屬於指定的大分類');
             }
@@ -396,10 +390,10 @@ class DesktopAIHelper {
         }
 
         $stmt = $this->db->prepare('
-            INSERT INTO desktops (server_id, local_udid, user_id, title, description, importance, ui_type, category_id, sub_category_id, ai_edited, ai_edited_at)
+            INSERT INTO desktops (server_id, local_udid, user_id, title, description, importance, desktop_type_code, category_id, sub_category_id, ai_edited, ai_edited_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())
         ');
-        $stmt->execute([$serverId, $localUdid, $this->userId, $title, $description, $importance, $uiType, $categoryLocalUdid, $subCategoryLocalUdid]);
+        $stmt->execute([$serverId, $localUdid, $this->userId, $title, $description, $importance, $desktopTypeCode, $categoryLocalUdid, $subCategoryLocalUdid]);
 
         $id = (int) $this->db->lastInsertId();
 
@@ -408,7 +402,7 @@ class DesktopAIHelper {
         }
 
         writeSyncLog($this->userId, null, 'desktop', $serverId, $localUdid, 'create', [
-            'server_id' => $serverId, 'title' => $title, 'ai_created' => true,
+            'server_id' => $serverId, 'title' => $title, 'desktop_type_code' => $desktopTypeCode, 'ai_created' => true,
         ]);
 
         return ['desktop_id' => $id, 'server_id' => $serverId, 'local_udid' => $localUdid];
@@ -420,12 +414,15 @@ class DesktopAIHelper {
         $desktop = $stmt->fetch();
         if (!$desktop) return false;
 
-        $allowed = ['title', 'description', 'importance', 'ui_type', 'is_favorite'];
+        $allowed = [
+            'title', 'description', 'importance', 'desktop_type_code',
+            'mixed_vertical_columns', 'is_favorite',
+            'color_scheme_id', 'custom_bg_color', 'custom_primary_color',
+            'custom_secondary_color', 'custom_accent_color', 'custom_text_color',
+        ];
         $updates = ['ai_edited = 1', 'ai_edited_at = NOW()'];
         $params = [];
-
         $logPayload = $fields;
-
         $categoryLocalUdid = null;
 
         if (array_key_exists('category_id', $fields)) {
@@ -437,9 +434,7 @@ class DesktopAIHelper {
                 $logPayload['sub_category_id'] = null;
             } else {
                 $category = findCategory($this->db, $this->userId, $value, 'desktop');
-                if (!$category) {
-                    jsonError('分類不存在', 404);
-                }
+                if (!$category) jsonError('分類不存在', 404);
                 $categoryLocalUdid = $category['local_udid'];
                 $updates[] = '`category_id` = ?';
                 $params[] = $categoryLocalUdid;
@@ -455,13 +450,9 @@ class DesktopAIHelper {
                 $logPayload['sub_category_id'] = null;
             } else {
                 $sub = findSubCategory($this->db, $this->userId, $value);
-                if (!$sub) {
-                    jsonError('子分類不存在', 404);
-                }
+                if (!$sub) jsonError('子分類不存在', 404);
                 $parent = findCategory($this->db, $this->userId, $sub['category_id'], 'desktop');
-                if (!$parent) {
-                    jsonError('分類不存在', 404);
-                }
+                if (!$parent) jsonError('分類不存在', 404);
                 if ($categoryLocalUdid !== null && $parent['local_udid'] !== $categoryLocalUdid) {
                     jsonError('子分類不屬於指定的大分類');
                 }
@@ -540,7 +531,29 @@ class DesktopAIHelper {
         return $stmt->rowCount() > 0;
     }
 
-    public function addComponent(string $desktopLocalUdid, string $componentLocalUdid, string $componentType, string $refType, ?string $refLocalUdid = null, array $config = [], int $sortOrder = 0): ?array {
+    /** 將 Cell / 資料單加入桌面 Cell 池 */
+    public function addCellToDesktop(string $desktopLocalUdid, string $refLocalUdid, string $refType = 'cell'): bool {
+        $stmt = $this->db->prepare('SELECT id FROM desktops WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
+        $stmt->execute([$this->userId, $desktopLocalUdid]);
+        if (!$stmt->fetch()) return false;
+
+        $this->db->prepare('INSERT IGNORE INTO desktop_cells (desktop_local_udid, ref_type, ref_local_udid) VALUES (?, ?, ?)')->execute([$desktopLocalUdid, $refType, $refLocalUdid]);
+        return true;
+    }
+
+    /** 從桌面 Cell 池移除 Cell / 資料單 */
+    public function removeCellFromDesktop(string $desktopLocalUdid, string $refLocalUdid): bool {
+        $stmt = $this->db->prepare('DELETE FROM desktop_cells WHERE desktop_local_udid = ? AND ref_local_udid = ?');
+        $stmt->execute([$desktopLocalUdid, $refLocalUdid]);
+        if ($stmt->rowCount() === 0) return false;
+
+        // 同時移除所有連結
+        $this->db->prepare('DELETE FROM desktop_component_links WHERE ref_local_udid = ? AND component_local_udid IN (SELECT local_udid FROM desktop_components WHERE desktop_local_udid = ?)')->execute([$refLocalUdid, $desktopLocalUdid]);
+        return true;
+    }
+
+    /** 新增組件到桌面 */
+    public function addComponent(string $desktopLocalUdid, string $componentLocalUdid, string $componentTypeCode, array $configJson = [], ?string $bgColor = null): ?array {
         $stmt = $this->db->prepare('SELECT id, local_udid FROM desktops WHERE user_id = ? AND local_udid = ? AND is_deleted = 0');
         $stmt->execute([$this->userId, $desktopLocalUdid]);
         $desktop = $stmt->fetch();
@@ -549,24 +562,80 @@ class DesktopAIHelper {
         $serverId = generateUUID();
 
         $stmt = $this->db->prepare('
-            INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, component_type, ref_type, ref_local_udid, config_json, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, component_type_code, bg_color, config_json)
+            VALUES (?, ?, ?, ?, ?, ?)
         ');
         $stmt->execute([
-            $serverId, $componentLocalUdid, $desktop['local_udid'], $componentType,
-            $refType, $refLocalUdid, json_encode($config, JSON_UNESCAPED_UNICODE), $sortOrder,
+            $serverId, $componentLocalUdid, $desktop['local_udid'], $componentTypeCode,
+            $bgColor, json_encode($configJson, JSON_UNESCAPED_UNICODE),
         ]);
 
-        return ['component_id' => (int) $this->db->lastInsertId(), 'server_id' => $serverId];
+        writeSyncLog($this->userId, null, 'desktop_component', $serverId, $componentLocalUdid, 'create', [
+            'server_id' => $serverId, 'desktop_local_udid' => $desktopLocalUdid, 'component_type_code' => $componentTypeCode, 'ai_created' => true,
+        ]);
+
+        return ['component_id' => (int) $this->db->lastInsertId(), 'server_id' => $serverId, 'local_udid' => $componentLocalUdid];
     }
 
+    /** 移除組件（含所有連結） */
     public function removeComponent(string $componentLocalUdid): bool {
         $stmt = $this->db->prepare('
-            DELETE dc FROM desktop_components dc
+            SELECT dc.id, dc.server_id FROM desktop_components dc
             INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
             WHERE d.user_id = ? AND dc.local_udid = ?
         ');
         $stmt->execute([$this->userId, $componentLocalUdid]);
-        return $stmt->rowCount() > 0;
+        $component = $stmt->fetch();
+        if (!$component) return false;
+
+        $this->db->prepare('DELETE FROM desktop_component_links WHERE component_local_udid = ?')->execute([$componentLocalUdid]);
+        $this->db->prepare('DELETE FROM desktop_components WHERE id = ?')->execute([$component['id']]);
+
+        writeSyncLog($this->userId, null, 'desktop_component', $component['server_id'], $componentLocalUdid, 'delete', ['ai_deleted' => true]);
+        return true;
+    }
+
+    /** 連結 Cell 到組件 */
+    public function linkCell(string $linkLocalUdid, string $componentLocalUdid, string $refLocalUdid, string $refType = 'cell', int $sortOrder = 0): bool {
+        // 驗證組件歸屬
+        $stmt = $this->db->prepare('
+            SELECT dc.id FROM desktop_components dc
+            INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
+            WHERE d.user_id = ? AND dc.local_udid = ?
+        ');
+        $stmt->execute([$this->userId, $componentLocalUdid]);
+        if (!$stmt->fetch()) return false;
+
+        $stmt = $this->db->prepare('
+            INSERT INTO desktop_component_links (local_udid, component_local_udid, ref_type, ref_local_udid, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)
+        ');
+        $stmt->execute([$linkLocalUdid, $componentLocalUdid, $refType, $refLocalUdid, $sortOrder]);
+
+        writeSyncLog($this->userId, null, 'desktop_component_links', '', $linkLocalUdid, 'create', [
+            'component_local_udid' => $componentLocalUdid, 'ref_type' => $refType, 'ref_local_udid' => $refLocalUdid,
+        ]);
+        return true;
+    }
+
+    /** 取消 Cell 與組件的連結 */
+    public function unlinkCell(string $componentLocalUdid, string $refLocalUdid): bool {
+        $stmt = $this->db->prepare('
+            SELECT dcl.local_udid FROM desktop_component_links dcl
+            INNER JOIN desktop_components dc ON dc.local_udid = dcl.component_local_udid
+            INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
+            WHERE d.user_id = ? AND dcl.component_local_udid = ? AND dcl.ref_local_udid = ?
+        ');
+        $stmt->execute([$this->userId, $componentLocalUdid, $refLocalUdid]);
+        $link = $stmt->fetch();
+        if (!$link) return false;
+
+        $this->db->prepare('DELETE FROM desktop_component_links WHERE component_local_udid = ? AND ref_local_udid = ?')->execute([$componentLocalUdid, $refLocalUdid]);
+
+        writeSyncLog($this->userId, null, 'desktop_component_links', '', $link['local_udid'], 'delete', [
+            'component_local_udid' => $componentLocalUdid, 'ref_local_udid' => $refLocalUdid,
+        ]);
+        return true;
     }
 }
