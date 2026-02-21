@@ -39,23 +39,25 @@ ALTER TABLE `desktop_components`
     ADD COLUMN `corner_radius` TINYINT NOT NULL DEFAULT 0 AFTER `border_width`;
 
 -- ============================================================
--- 3. ALTER TABLE desktop_temp_cells
---    移除 component_local_udid（此欄位不在規格內）
+-- 3. ALTER TABLE cells
+--    新增 desktop_origin 欄位（取代暫時 Cell 設計）
 -- ============================================================
 
-ALTER TABLE `desktop_temp_cells`
-    DROP COLUMN `component_local_udid`;
+ALTER TABLE `cells`
+    ADD COLUMN `desktop_origin` TINYINT(1) NOT NULL DEFAULT 0
+        COMMENT '1 = 在桌面情境中建立的 Cell'
+    AFTER `content_json`;
 
 -- ============================================================
 -- 4. ALTER TABLE sync_log
---    新增 desktop_cells / desktop_component_links 到 entity_type ENUM
+--    更新 entity_type ENUM：移除 desktop_temp_cell
 -- ============================================================
 
 ALTER TABLE `sync_log`
     MODIFY COLUMN `entity_type` ENUM(
         'cell', 'datasheet', 'desktop',
         'category', 'sub_category', 'tag',
-        'desktop_component', 'desktop_temp_cell',
+        'desktop_component',
         'desktop_cells', 'desktop_component_links',
         'data_sheet_cells', 'smart_sheet_conditions',
         'ai_conversation', 'ai_message',
@@ -101,12 +103,14 @@ CREATE TABLE IF NOT EXISTS `component_types` (
     UNIQUE KEY `uk_code` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- NULL = 允許全部（含資料單）；有值則限定 cell_type 編號；"datasheet" 代表資料單
+-- NULL = 允許全部（含資料單）；有值則限定 cell_type 編號
 INSERT IGNORE INTO `component_types` (`code`, `name`, `category`, `allowed_cell_types`, `is_active`, `sort_order`) VALUES
-('free_block',        '自由方塊', 'general', NULL,        1, 1),
-('list_block',        '列表方塊', 'general', NULL,        1, 2),
-('album_block',       '相簿方塊', 'general', '[2,3,5]',   1, 3),
-('image_text_block',  '圖文方塊', 'general', NULL,        1, 4);
+('free_block',        '自由方塊',     'general', NULL,      1, 1),
+('list_block',        '列表方塊',     'general', NULL,      1, 2),
+('album_block',       '相簿方塊',     'general', '[2,3,5]', 1, 3),
+('image_text_block',  '圖文方塊',     'general', NULL,      1, 4),
+('webview_block',     'WebView 方塊', 'general', '[15]',    1, 5),
+('text_op_block',     '文字操作方塊', 'special', '[1]',     1, 6);
 
 -- ============================================================
 -- 7. CREATE TABLE color_schemes（後台管理配色表）
@@ -160,7 +164,7 @@ CREATE TABLE IF NOT EXISTS `desktop_component_links` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `local_udid` VARCHAR(36) NOT NULL,
     `component_local_udid` VARCHAR(36) NOT NULL,
-    `ref_type` ENUM('cell', 'datasheet', 'temp') NOT NULL DEFAULT 'cell',
+    `ref_type` ENUM('cell', 'datasheet') NOT NULL DEFAULT 'cell',
     `ref_local_udid` VARCHAR(36) NOT NULL,
     `sort_order` INT NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

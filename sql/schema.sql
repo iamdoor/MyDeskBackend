@@ -114,6 +114,7 @@ CREATE TABLE `cells` (
     `description` TEXT,
     `importance` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0~5',
     `content_json` JSON DEFAULT NULL,
+    `desktop_origin` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = 在桌面情境中建立的 Cell',
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
     `deleted_at` DATETIME DEFAULT NULL,
     `scheduled_delete` TINYINT(1) NOT NULL DEFAULT 0,
@@ -236,10 +237,12 @@ CREATE TABLE `component_types` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `component_types` (`code`, `name`, `category`, `allowed_cell_types`, `is_active`, `sort_order`) VALUES
-('free_block',        '自由方塊', 'general', NULL,        1, 1),
-('list_block',        '列表方塊', 'general', NULL,        1, 2),
-('album_block',       '相簿方塊', 'general', '[2,3,5]',   1, 3),
-('image_text_block',  '圖文方塊', 'general', NULL,        1, 4);
+('free_block',        '自由方塊',     'general', NULL,      1, 1),
+('list_block',        '列表方塊',     'general', NULL,      1, 2),
+('album_block',       '相簿方塊',     'general', '[2,3,5]', 1, 3),
+('image_text_block',  '圖文方塊',     'general', NULL,      1, 4),
+('webview_block',     'WebView 方塊', 'general', '[15]',    1, 5),
+('text_op_block',     '文字操作方塊', 'special', '[1]',     1, 6);
 
 CREATE TABLE `color_schemes` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -343,7 +346,7 @@ CREATE TABLE `desktop_component_links` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `local_udid` VARCHAR(36) NOT NULL,
     `component_local_udid` VARCHAR(36) NOT NULL,
-    `ref_type` ENUM('cell', 'datasheet', 'temp') NOT NULL DEFAULT 'cell',
+    `ref_type` ENUM('cell', 'datasheet') NOT NULL DEFAULT 'cell',
     `ref_local_udid` VARCHAR(36) NOT NULL,
     `sort_order` INT NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -352,23 +355,6 @@ CREATE TABLE `desktop_component_links` (
     UNIQUE KEY `uk_local_udid` (`local_udid`),
     UNIQUE KEY `uk_component_ref` (`component_local_udid`, `ref_local_udid`),
     KEY `idx_component` (`component_local_udid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `desktop_temp_cells` (
-    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `server_id` VARCHAR(36) NOT NULL,
-    `local_udid` VARCHAR(36) NOT NULL,
-    `desktop_local_udid` VARCHAR(36) NOT NULL,
-    `cell_type` INT UNSIGNED NOT NULL,
-    `title` VARCHAR(500) NOT NULL DEFAULT '',
-    `description` TEXT,
-    `content_json` JSON DEFAULT NULL,
-    `promoted_to_cell_udid` VARCHAR(36) DEFAULT NULL COMMENT '轉正後的 Cell UDID',
-    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_server_id` (`server_id`),
-    KEY `idx_desktop` (`desktop_local_udid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -382,7 +368,7 @@ CREATE TABLE `sync_log` (
     `entity_type` ENUM(
         'cell', 'datasheet', 'desktop',
         'category', 'sub_category', 'tag',
-        'desktop_component', 'desktop_temp_cell',
+        'desktop_component',
         'desktop_cells', 'desktop_component_links',
         'data_sheet_cells', 'smart_sheet_conditions',
         'ai_conversation', 'ai_message',
