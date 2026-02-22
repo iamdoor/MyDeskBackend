@@ -242,7 +242,8 @@ INSERT INTO `component_types` (`code`, `name`, `category`, `allowed_cell_types`,
 ('album_block',       '相簿方塊',     'general', '[2,3,5]', 1, 3),
 ('image_text_block',  '圖文方塊',     'general', NULL,      1, 4),
 ('webview_block',     'WebView 方塊', 'general', '[15]',    1, 5),
-('text_op_block',     '文字操作方塊', 'special', '[1]',     1, 6);
+('text_op_block',     '文字操作方塊', 'special', '[1]',     1, 6),
+('api_button_block',  'API 按鈕',     'special', '[1]',     1, 7);
 
 CREATE TABLE `color_schemes` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
