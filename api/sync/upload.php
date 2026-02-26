@@ -111,6 +111,58 @@ foreach ($changes as $change) {
         }
     }
 
+    // API 模板（無衝突機制，直接覆寫）
+    if ($entityType === 'api_template') {
+        try {
+            switch ($action) {
+                case 'create':
+                    $stmt = $db->prepare('SELECT server_id FROM api_templates WHERE user_id = ? AND local_udid = ?');
+                    $stmt->execute([$userId, $localUdid]);
+                    $existing = $stmt->fetch();
+                    if ($existing) {
+                        $serverId = $existing['server_id'];
+                        $db->prepare('UPDATE api_templates SET name = ?, template_json = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
+                           ->execute([$changeData['name'] ?? '', $changeData['template_json'] ?? '{}', $changeData['updated_at'] ?? date('Y-m-d H:i:s'), $userId, $localUdid]);
+                    } else {
+                        $serverId = generateUUID();
+                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $db->prepare('INSERT INTO api_templates (server_id, user_id, local_udid, name, template_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                           ->execute([$serverId, $userId, $localUdid, $changeData['name'] ?? '', $changeData['template_json'] ?? '{}', $now, $changeData['updated_at'] ?? $now]);
+                    }
+                    writeSyncLog($userId, $deviceUdid, 'api_template', $serverId, $localUdid, 'create', $changeData);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
+                    break;
+
+                case 'update':
+                    $stmt = $db->prepare('SELECT server_id FROM api_templates WHERE user_id = ? AND local_udid = ?');
+                    $stmt->execute([$userId, $localUdid]);
+                    $existing = $stmt->fetch();
+                    if (!$existing) {
+                        $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => '模板不存在'];
+                        break;
+                    }
+                    $db->prepare('UPDATE api_templates SET name = ?, template_json = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
+                       ->execute([$changeData['name'] ?? '', $changeData['template_json'] ?? '{}', $changeData['updated_at'] ?? date('Y-m-d H:i:s'), $userId, $localUdid]);
+                    writeSyncLog($userId, $deviceUdid, 'api_template', $existing['server_id'], $localUdid, 'update', $changeData);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                case 'delete':
+                    $now = date('Y-m-d H:i:s');
+                    $db->prepare('UPDATE api_templates SET is_deleted = 1, deleted_at = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
+                       ->execute([$now, $now, $userId, $localUdid]);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                default:
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => '未知 action'];
+            }
+        } catch (Exception $e) {
+            $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => $e->getMessage()];
+        }
+        continue;
+    }
+
     // 關聯型實體（無 user_id / server_id / conflict 機制）
     if (in_array($entityType, ['datasheet_cell', 'desktop_cell', 'desktop_component_link'])) {
         try {

@@ -114,6 +114,7 @@ CREATE TABLE `cells` (
     `description` TEXT,
     `importance` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0~5',
     `content_json` JSON DEFAULT NULL,
+    `custom_id` VARCHAR(100) DEFAULT NULL COMMENT '自訂序號（英數字），供使用者在資料單內辨識用',
     `desktop_origin` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = 在桌面情境中建立的 Cell',
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
     `deleted_at` DATETIME DEFAULT NULL,
@@ -432,6 +433,28 @@ CREATE TABLE `ai_preset_prompts` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_context_active` (`context_type`, `is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- API 模板
+-- ============================================================
+
+CREATE TABLE `api_templates` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `server_id` VARCHAR(36) NOT NULL,
+    `local_udid` VARCHAR(36) NOT NULL,
+    `user_id` INT UNSIGNED NOT NULL,
+    `name` VARCHAR(200) NOT NULL DEFAULT '',
+    `template_json` LONGTEXT NOT NULL,
+    `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
+    `deleted_at` DATETIME DEFAULT NULL,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_server_id` (`server_id`),
+    KEY `idx_user_local` (`user_id`, `local_udid`),
+    KEY `idx_user_updated` (`user_id`, `updated_at`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

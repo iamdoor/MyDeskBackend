@@ -63,7 +63,7 @@ $stmt->execute([$userId, $lastSyncAt]);
 $tags = $stmt->fetchAll();
 
 // Cells
-$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ? AND updated_at > ?');
+$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, custom_id, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ? AND updated_at > ?');
 $stmt->execute([$userId, $lastSyncAt]);
 $cells = $stmt->fetchAll();
 
@@ -152,6 +152,11 @@ foreach ($desktops as &$desktop) {
 }
 unset($desktop);
 
+// API 模板（含已刪除，讓 iOS 端知道要清除）
+$stmt = $db->prepare('SELECT server_id, local_udid, name, template_json, is_deleted, deleted_at, created_at, updated_at FROM api_templates WHERE user_id = ? AND updated_at > ?');
+$stmt->execute([$userId, $lastSyncAt]);
+$apiTemplates = $stmt->fetchAll();
+
 // 更新裝置同步時間
 $db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
@@ -163,7 +168,8 @@ $totalCount = count($categories)
     + count($desktops)
     + count($desktopComponents)
     + count($desktopCells)
-    + count($desktopComponentLinks);
+    + count($desktopComponentLinks)
+    + count($apiTemplates);
 
 jsonSuccess([
     'categories' => $categories,
@@ -175,6 +181,7 @@ jsonSuccess([
     'desktop_cells' => $desktopCells,
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,
+    'api_templates' => $apiTemplates,
     'server_now' => $serverNow,
     'count' => $totalCount,
 ]);

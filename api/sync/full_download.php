@@ -46,7 +46,7 @@ $stmt->execute([$userId]);
 $tags = $stmt->fetchAll();
 
 // === Cells ===
-$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ?');
+$stmt = $db->prepare('SELECT server_id, local_udid, cell_type, title, description, importance, content_json, custom_id, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ?');
 $stmt->execute([$userId]);
 $cells = $stmt->fetchAll();
 
@@ -136,6 +136,11 @@ foreach ($desktops as &$desktop) {
     $desktop['components'] = $components;
 }
 
+// === API 模板 ===
+$stmt = $db->prepare('SELECT server_id, local_udid, name, template_json, is_deleted, deleted_at, created_at, updated_at FROM api_templates WHERE user_id = ? AND is_deleted = 0');
+$stmt->execute([$userId]);
+$apiTemplates = $stmt->fetchAll();
+
 // === AI 對話 ===
 $stmt = $db->prepare('SELECT server_id, local_udid, context_type, context_local_udid, created_at, updated_at FROM ai_conversations WHERE user_id = ?');
 $stmt->execute([$userId]);
@@ -170,5 +175,6 @@ jsonSuccess([
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,
     'ai_conversations' => $aiConversations,
+    'api_templates' => $apiTemplates,
     'server_now' => $serverNow,
 ]);
