@@ -129,7 +129,6 @@ foreach ($changes as $change) {
                         $db->prepare('INSERT INTO api_templates (server_id, user_id, local_udid, name, template_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
                            ->execute([$serverId, $userId, $localUdid, $changeData['name'] ?? '', $changeData['template_json'] ?? '{}', $now, $changeData['updated_at'] ?? $now]);
                     }
-                    writeSyncLog($userId, $deviceUdid, 'api_template', $serverId, $localUdid, 'create', $changeData);
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
                     break;
 
@@ -143,7 +142,6 @@ foreach ($changes as $change) {
                     }
                     $db->prepare('UPDATE api_templates SET name = ?, template_json = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
                        ->execute([$changeData['name'] ?? '', $changeData['template_json'] ?? '{}', $changeData['updated_at'] ?? date('Y-m-d H:i:s'), $userId, $localUdid]);
-                    writeSyncLog($userId, $deviceUdid, 'api_template', $existing['server_id'], $localUdid, 'update', $changeData);
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
                     break;
 

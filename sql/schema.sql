@@ -370,7 +370,7 @@ CREATE TABLE `sync_log` (
     `entity_type` ENUM(
         'cell', 'datasheet', 'desktop',
         'category', 'sub_category', 'tag',
-        'desktop_component',
+        'desktop_component', 'api_template',
         'desktop_cells', 'desktop_component_links',
         'data_sheet_cells', 'smart_sheet_conditions',
         'ai_conversation', 'ai_message',
