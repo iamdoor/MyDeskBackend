@@ -141,6 +141,11 @@ $stmt = $db->prepare('SELECT server_id, local_udid, name, template_json, is_dele
 $stmt->execute([$userId]);
 $apiTemplates = $stmt->fetchAll();
 
+// === App 主題 ===
+$stmt = $db->prepare('SELECT server_id, local_udid, name, accent_hex, bg_hex, surface_hex, text_hex, warning_hex, is_deleted, deleted_at, created_at, updated_at FROM app_themes WHERE user_id = ? AND is_deleted = 0');
+$stmt->execute([$userId]);
+$appThemes = $stmt->fetchAll();
+
 // === AI 對話 ===
 $stmt = $db->prepare('SELECT server_id, local_udid, context_type, context_local_udid, created_at, updated_at FROM ai_conversations WHERE user_id = ?');
 $stmt->execute([$userId]);
@@ -176,5 +181,6 @@ jsonSuccess([
     'desktop_component_links' => $desktopComponentLinks,
     'ai_conversations' => $aiConversations,
     'api_templates' => $apiTemplates,
+    'app_themes' => $appThemes,
     'server_now' => $serverNow,
 ]);

@@ -199,6 +199,11 @@ $stmt = $db->prepare('SELECT server_id, local_udid, name, template_json, is_dele
 $stmt->execute([$userId, $lastSyncAt]);
 $apiTemplates = $stmt->fetchAll();
 
+// App 主題（含已刪除）
+$stmt = $db->prepare('SELECT server_id, local_udid, name, accent_hex, bg_hex, surface_hex, text_hex, warning_hex, is_deleted, deleted_at, created_at, updated_at FROM app_themes WHERE user_id = ? AND updated_at > ?');
+$stmt->execute([$userId, $lastSyncAt]);
+$appThemes = $stmt->fetchAll();
+
 // 更新裝置同步時間
 $db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
@@ -211,7 +216,8 @@ $totalCount = count($categories)
     + count($desktopComponents)
     + count($desktopCells)
     + count($desktopComponentLinks)
-    + count($apiTemplates);
+    + count($apiTemplates)
+    + count($appThemes);
 
 jsonSuccess([
     'categories' => $categories,
@@ -224,6 +230,7 @@ jsonSuccess([
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,
     'api_templates' => $apiTemplates,
+    'app_themes' => $appThemes,
     'server_now' => $serverNow,
     'count' => $totalCount,
 ]);

@@ -161,6 +161,61 @@ foreach ($changes as $change) {
         continue;
     }
 
+    // App 主題（無衝突機制，直接覆寫）
+    if ($entityType === 'app_theme') {
+        try {
+            switch ($action) {
+                case 'create':
+                    $stmt = $db->prepare('SELECT server_id FROM app_themes WHERE user_id = ? AND local_udid = ?');
+                    $stmt->execute([$userId, $localUdid]);
+                    $existing = $stmt->fetch();
+                    if ($existing) {
+                        $serverId = $existing['server_id'];
+                        $db->prepare('UPDATE app_themes SET name = ?, accent_hex = ?, bg_hex = ?, surface_hex = ?, text_hex = ?, warning_hex = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
+                           ->execute([
+                               $changeData['name'] ?? '',
+                               $changeData['accent_hex'] ?? '#0D9488',
+                               $changeData['bg_hex'] ?? '#FFFFFF',
+                               $changeData['surface_hex'] ?? '#E8F7F6',
+                               $changeData['text_hex'] ?? '#1A2B4A',
+                               $changeData['warning_hex'] ?? '#FFB347',
+                               $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                               $userId, $localUdid
+                           ]);
+                    } else {
+                        $serverId = generateUUID();
+                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $db->prepare('INSERT INTO app_themes (server_id, user_id, local_udid, name, accent_hex, bg_hex, surface_hex, text_hex, warning_hex, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                           ->execute([
+                               $serverId, $userId, $localUdid,
+                               $changeData['name'] ?? '',
+                               $changeData['accent_hex'] ?? '#0D9488',
+                               $changeData['bg_hex'] ?? '#FFFFFF',
+                               $changeData['surface_hex'] ?? '#E8F7F6',
+                               $changeData['text_hex'] ?? '#1A2B4A',
+                               $changeData['warning_hex'] ?? '#FFB347',
+                               $now, $changeData['updated_at'] ?? $now
+                           ]);
+                    }
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
+                    break;
+
+                case 'delete':
+                    $now = date('Y-m-d H:i:s');
+                    $db->prepare('UPDATE app_themes SET is_deleted = 1, deleted_at = ?, updated_at = ? WHERE user_id = ? AND local_udid = ?')
+                       ->execute([$now, $now, $userId, $localUdid]);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                default:
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => '未知 action'];
+            }
+        } catch (Exception $e) {
+            $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => $e->getMessage()];
+        }
+        continue;
+    }
+
     // 桌面組件（無 user_id，需自定義處理，create 需回傳 server_id）
     if ($entityType === 'desktop_component') {
         try {
