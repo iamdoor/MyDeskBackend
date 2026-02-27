@@ -161,6 +161,84 @@ foreach ($changes as $change) {
         continue;
     }
 
+    // 桌面組件（無 user_id，需自定義處理，create 需回傳 server_id）
+    if ($entityType === 'desktop_component') {
+        try {
+            $desktopUdid = $changeData['desktop_local_udid'] ?? '';
+            if (!$desktopUdid) throw new Exception('缺少 desktop_local_udid');
+
+            switch ($action) {
+                case 'create':
+                    $stmt = $db->prepare('SELECT server_id FROM desktop_components WHERE local_udid = ?');
+                    $stmt->execute([$localUdid]);
+                    $existing = $stmt->fetch();
+                    $configJson = $changeData['config_json'] ?? '{}';
+                    if (is_array($configJson)) $configJson = json_encode($configJson);
+
+                    if ($existing) {
+                        $serverId = $existing['server_id'];
+                        $db->prepare('UPDATE desktop_components SET component_type_code=?, bg_color=?, border_color=?, border_width=?, corner_radius=?, config_json=?, updated_at=? WHERE local_udid=?')
+                           ->execute([
+                               $changeData['component_type_code'] ?? 'free_block',
+                               $changeData['bg_color'] ?? null,
+                               $changeData['border_color'] ?? null,
+                               (int)($changeData['border_width'] ?? 0),
+                               (int)($changeData['corner_radius'] ?? 12),
+                               $configJson,
+                               $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                               $localUdid,
+                           ]);
+                    } else {
+                        $serverId = generateUUID();
+                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $db->prepare('INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                           ->execute([
+                               $serverId, $localUdid, $desktopUdid,
+                               $changeData['component_type_code'] ?? 'free_block',
+                               $changeData['bg_color'] ?? null,
+                               $changeData['border_color'] ?? null,
+                               (int)($changeData['border_width'] ?? 0),
+                               (int)($changeData['corner_radius'] ?? 12),
+                               $configJson,
+                               $now,
+                               $changeData['updated_at'] ?? $now,
+                           ]);
+                    }
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
+                    break;
+
+                case 'update':
+                    $configJson = $changeData['config_json'] ?? '{}';
+                    if (is_array($configJson)) $configJson = json_encode($configJson);
+                    $db->prepare('UPDATE desktop_components SET component_type_code=?, bg_color=?, border_color=?, border_width=?, corner_radius=?, config_json=?, updated_at=? WHERE local_udid=?')
+                       ->execute([
+                           $changeData['component_type_code'] ?? 'free_block',
+                           $changeData['bg_color'] ?? null,
+                           $changeData['border_color'] ?? null,
+                           (int)($changeData['border_width'] ?? 0),
+                           (int)($changeData['corner_radius'] ?? 12),
+                           $configJson,
+                           $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                           $localUdid,
+                       ]);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                case 'delete':
+                    $db->prepare('DELETE FROM desktop_component_links WHERE component_local_udid = ?')->execute([$localUdid]);
+                    $db->prepare('DELETE FROM desktop_components WHERE local_udid = ?')->execute([$localUdid]);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                default:
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => '未知 action'];
+            }
+        } catch (Exception $e) {
+            $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => $e->getMessage()];
+        }
+        continue;
+    }
+
     // 關聯型實體（無 user_id / server_id / conflict 機制）
     if (in_array($entityType, ['datasheet_cell', 'desktop_cell', 'desktop_component_link'])) {
         try {

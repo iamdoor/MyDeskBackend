@@ -55,7 +55,7 @@ $total = (int) $countStmt->fetchColumn();
 // 資料
 $sql = "
     SELECT c.server_id, c.local_udid, c.cell_type, c.title, c.description, c.importance,
-           c.content_json, c.desktop_origin, c.is_deleted, c.deleted_at, c.scheduled_delete, c.scheduled_delete_at,
+           c.content_json, c.custom_id, c.desktop_origin, c.is_deleted, c.deleted_at, c.scheduled_delete, c.scheduled_delete_at,
            c.ai_edited, c.ai_edited_at, c.created_at, c.updated_at
     FROM cells c
     WHERE $whereClause

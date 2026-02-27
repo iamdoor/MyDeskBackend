@@ -120,11 +120,11 @@ foreach ($desktops as &$desktop) {
     $compStmt->execute([$desktop['local_udid']]);
     $components = $compStmt->fetchAll();
     foreach ($components as &$comp) {
-        $desktopComponents[] = $comp;
         if (is_string($comp['config_json'])) {
             $decoded = json_decode($comp['config_json'], true);
             if ($decoded !== null) $comp['config_json'] = $decoded;
         }
+        $desktopComponents[] = $comp;
         $linkStmt = $db->prepare('SELECT local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at FROM desktop_component_links WHERE component_local_udid = ? ORDER BY sort_order');
         $linkStmt->execute([$comp['local_udid']]);
         $comp['links'] = $linkStmt->fetchAll();

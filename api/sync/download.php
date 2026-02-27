@@ -152,6 +152,48 @@ foreach ($desktops as &$desktop) {
 }
 unset($desktop);
 
+// 補充：直接有更新的組件（父桌面未必有更新，例如組件從另一裝置上傳後此裝置增量同步）
+$stmt = $db->prepare('
+    SELECT dc.server_id, dc.local_udid, dc.desktop_local_udid, dc.component_type_code,
+           dc.bg_color, dc.border_color, dc.border_width, dc.corner_radius,
+           dc.config_json, dc.created_at, dc.updated_at
+    FROM desktop_components dc
+    INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
+    WHERE d.user_id = ? AND dc.updated_at > ?
+');
+$stmt->execute([$userId, $lastSyncAt]);
+$directComponents = $stmt->fetchAll();
+$existingCompUdids = array_column($desktopComponents, 'local_udid');
+foreach ($directComponents as $comp) {
+    if (in_array($comp['local_udid'], $existingCompUdids)) continue;
+    if (is_string($comp['config_json'])) {
+        $decoded = json_decode($comp['config_json'], true);
+        if ($decoded !== null) $comp['config_json'] = $decoded;
+    }
+    $desktopComponents[] = $comp;
+    $linkStmt = $db->prepare('SELECT local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at FROM desktop_component_links WHERE component_local_udid = ? ORDER BY sort_order');
+    $linkStmt->execute([$comp['local_udid']]);
+    foreach ($linkStmt->fetchAll() as $link) {
+        $desktopComponentLinks[] = $link;
+    }
+}
+
+// 補充：直接有更新的連結（組件未必有更新，例如只新增/移除 cell 連結）
+$stmt = $db->prepare('
+    SELECT dcl.local_udid, dcl.component_local_udid, dcl.ref_type, dcl.ref_local_udid, dcl.sort_order, dcl.created_at, dcl.updated_at
+    FROM desktop_component_links dcl
+    INNER JOIN desktop_components dc ON dc.local_udid = dcl.component_local_udid
+    INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
+    WHERE d.user_id = ? AND dcl.updated_at > ?
+');
+$stmt->execute([$userId, $lastSyncAt]);
+$existingLinkUdids = array_column($desktopComponentLinks, 'local_udid');
+foreach ($stmt->fetchAll() as $link) {
+    if (!in_array($link['local_udid'], $existingLinkUdids)) {
+        $desktopComponentLinks[] = $link;
+    }
+}
+
 // API 模板（含已刪除，讓 iOS 端知道要清除）
 $stmt = $db->prepare('SELECT server_id, local_udid, name, template_json, is_deleted, deleted_at, created_at, updated_at FROM api_templates WHERE user_id = ? AND updated_at > ?');
 $stmt->execute([$userId, $lastSyncAt]);
