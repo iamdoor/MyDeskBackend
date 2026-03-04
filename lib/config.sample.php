@@ -14,6 +14,9 @@ define('DB_CHARSET', 'utf8mb4');
 // DriveServer 設定
 define('DRIVE_BASE_URL', 'https://www.askcloud.cc/DriveServer');
 
+// Serper.dev API Key（用於 AI searchWeb 工具）
+define('SERPER_API_KEY', '');
+
 // Token 設定
 define('TOKEN_SECRET', 'CHANGE_THIS_TO_A_RANDOM_STRING');
 define('TOKEN_EXPIRE_HOURS', 720); // 30 天

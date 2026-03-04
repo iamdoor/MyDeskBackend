@@ -89,6 +89,17 @@ function requireAuth(): int {
 }
 
 /**
+ * 純提取 Bearer token（不驗證），供需要轉發 token 的場景使用
+ */
+function extractBearerToken(): string {
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) {
+        return $matches[1];
+    }
+    return $_GET['token'] ?? $_POST['token'] ?? '';
+}
+
+/**
  * 產生 UUID v4
  */
 function generateUUID(): string {

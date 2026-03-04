@@ -10,6 +10,39 @@ require_once __DIR__ . '/db.php';
  * @param string $contextType 'cell' 或 'datasheet'
  */
 function getAITools(string $contextType): array {
+    $webTools = [
+        [
+            'type' => 'function',
+            'function' => [
+                'name' => 'searchWeb',
+                'description' => '搜尋網路資料，回傳標題、摘要、連結（及可能的圖片 URL）。建立 Cell 前先用此工具查詢資料。',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'description' => '搜尋關鍵字'],
+                        'num_results' => ['type' => 'integer', 'description' => '回傳筆數（預設 5，最多 10）'],
+                    ],
+                    'required' => ['query'],
+                ],
+            ],
+        ],
+        [
+            'type' => 'function',
+            'function' => [
+                'name' => 'uploadMediaFromUrl',
+                'description' => '將網路圖片或影片 URL 下載並上傳至 DriveServer，回傳 drive_udid 供建立 Cell 使用。適用於搜尋到含圖片/影片的結果後，把媒體存入 Cell（type=2 圖片/type=3 影片/type=4 音訊）。',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'url' => ['type' => 'string', 'description' => '圖片或影片的完整 https URL'],
+                        'filename' => ['type' => 'string', 'description' => '儲存檔名（選填，會自動從 URL 或 Content-Disposition 推斷）'],
+                    ],
+                    'required' => ['url'],
+                ],
+            ],
+        ],
+    ];
+
     $cellTools = [
         [
             'type' => 'function',
@@ -259,23 +292,30 @@ function getAITools(string $contextType): array {
     ];
 
     if ($contextType === 'cell') {
-        return $cellTools;
+        return array_merge($webTools, $cellTools);
     }
     // datasheet: 包含全部工具
-    return array_merge($cellTools, $dataSheetTools);
+    return array_merge($webTools, $cellTools, $dataSheetTools);
 }
 
 /**
  * 執行 AI 工具呼叫
  * @return array 執行結果
  */
-function executeAITool(string $name, array $args, int $userId): array {
+function executeAITool(string $name, array $args, int $userId,
+                       string $userToken = '', string $username = ''): array {
     logAIToolDebug($userId, $name, $args);
 
     $cellHelper = new CellAIHelper($userId);
     $dsHelper = new DataSheetAIHelper($userId);
 
     switch ($name) {
+        // === 網路工具 ===
+        case 'searchWeb':
+            return aiToolSearchWeb($args);
+
+        case 'uploadMediaFromUrl':
+            return aiToolUploadMediaFromUrl($args, $userToken, $username);
         // === Cell 工具 ===
         case 'createCell':
             $cellType = (int) ($args['cell_type'] ?? 1);
@@ -450,6 +490,246 @@ function requiresContent(int $cellType): bool {
         16, // table
     ];
     return in_array($cellType, $textTypes, true);
+}
+
+/**
+ * searchWeb：用 Serper.dev 搜尋 Google 結果
+ */
+function aiToolSearchWeb(array $args): array {
+    $apiKey = defined('SERPER_API_KEY') ? SERPER_API_KEY : '';
+    if (empty($apiKey)) {
+        return ['success' => false, 'error' => '伺服器未設定 SERPER_API_KEY'];
+    }
+
+    $query = trim($args['query'] ?? '');
+    if ($query === '') {
+        return ['success' => false, 'error' => '搜尋關鍵字不可為空'];
+    }
+
+    $numResults = min(10, max(1, (int) ($args['num_results'] ?? 5)));
+
+    $payload = json_encode(['q' => $query, 'num' => $numResults], JSON_UNESCAPED_UNICODE);
+
+    $ch = curl_init('https://google.serper.dev/search');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            'X-API-KEY: ' . $apiKey,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) {
+        return ['success' => false, 'error' => "網路錯誤: $curlError"];
+    }
+    if ($httpCode !== 200) {
+        return ['success' => false, 'error' => "Serper API 錯誤 (HTTP $httpCode)"];
+    }
+
+    $data = json_decode($response, true);
+    if (!$data) {
+        return ['success' => false, 'error' => '搜尋結果解析失敗'];
+    }
+
+    $results = [];
+
+    // knowledgeGraph 摘要（若有）
+    if (!empty($data['knowledgeGraph'])) {
+        $kg = $data['knowledgeGraph'];
+        $results[] = [
+            'title' => $kg['title'] ?? '',
+            'snippet' => $kg['description'] ?? '',
+            'link' => $kg['website'] ?? '',
+            'imageUrl' => $kg['imageUrl'] ?? null,
+        ];
+    }
+
+    // 一般搜尋結果
+    foreach ($data['organic'] ?? [] as $item) {
+        if (count($results) >= $numResults) break;
+        $results[] = [
+            'title' => $item['title'] ?? '',
+            'snippet' => $item['snippet'] ?? '',
+            'link' => $item['link'] ?? '',
+            'imageUrl' => $item['imageUrl'] ?? null,
+        ];
+    }
+
+    // 移除 imageUrl 為 null 的欄位，保持結果乾淨
+    $results = array_map(function (array $r): array {
+        if ($r['imageUrl'] === null) unset($r['imageUrl']);
+        return $r;
+    }, $results);
+
+    return [
+        'success' => true,
+        'results' => $results,
+        'count' => count($results),
+    ];
+}
+
+/**
+ * uploadMediaFromUrl：下載圖片/影片後上傳至 DriveServer，回傳 drive_udid
+ */
+function aiToolUploadMediaFromUrl(array $args, string $userToken, string $username): array {
+    $url = trim($args['url'] ?? '');
+
+    if (!preg_match('#^https?://#i', $url)) {
+        return ['success' => false, 'error' => 'URL 必須以 https:// 開頭'];
+    }
+
+    // 1. 取得 HEAD 資訊：Content-Type 與 Content-Length
+    $chHead = curl_init($url);
+    curl_setopt_array($chHead, [
+        CURLOPT_NOBODY => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_USERAGENT => 'MyDesk-AI/1.0',
+    ]);
+    curl_exec($chHead);
+    $mimeType = curl_getinfo($chHead, CURLINFO_CONTENT_TYPE);
+    $contentLength = (int) curl_getinfo($chHead, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
+    $finalUrl = curl_getinfo($chHead, CURLINFO_EFFECTIVE_URL);
+    curl_close($chHead);
+
+    // 清理 MIME（去掉 charset 等附加資訊）
+    $mimeType = strtolower(trim(explode(';', $mimeType ?? '')[0]));
+
+    $allowedMimePrefixes = ['image/', 'video/', 'audio/', 'application/pdf', 'application/octet-stream'];
+    $allowed = false;
+    foreach ($allowedMimePrefixes as $prefix) {
+        if (str_starts_with($mimeType, $prefix)) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) {
+        return ['success' => false, 'error' => "不支援的媒體類型: $mimeType（僅支援 image/video/audio/pdf）"];
+    }
+
+    $maxBytes = 20 * 1024 * 1024; // 20 MB
+    if ($contentLength > $maxBytes) {
+        return ['success' => false, 'error' => '檔案超過 20MB 限制'];
+    }
+
+    // 2. 推斷檔名
+    $filename = trim($args['filename'] ?? '');
+    if ($filename === '') {
+        $urlPath = parse_url($finalUrl ?: $url, PHP_URL_PATH) ?? '';
+        $filename = basename($urlPath);
+        if ($filename === '' || !preg_match('/\.[a-z0-9]{2,5}$/i', $filename)) {
+            // 從 MIME 推斷副檔名
+            $ext = explode('/', $mimeType)[1] ?? 'bin';
+            $ext = preg_replace('/[^a-z0-9]/', '', $ext);
+            $filename = 'media_' . time() . '.' . $ext;
+        }
+    }
+
+    // 3. 下載檔案到暫存路徑
+    $tmpFile = tempnam(sys_get_temp_dir(), 'mydesk_media_');
+    $fh = fopen($tmpFile, 'wb');
+
+    $downloaded = 0;
+    $chGet = curl_init($finalUrl ?: $url);
+    curl_setopt_array($chGet, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_USERAGENT => 'MyDesk-AI/1.0',
+        CURLOPT_WRITEFUNCTION => function ($ch, $data) use ($fh, &$downloaded, $maxBytes) {
+            $downloaded += strlen($data);
+            if ($downloaded > $maxBytes) {
+                return -1; // abort
+            }
+            fwrite($fh, $data);
+            return strlen($data);
+        },
+    ]);
+
+    curl_exec($chGet);
+    $curlError = curl_error($chGet);
+    curl_close($chGet);
+    fclose($fh);
+
+    if ($curlError && strpos($curlError, 'Failed writing body') === false) {
+        @unlink($tmpFile);
+        return ['success' => false, 'error' => "下載失敗: $curlError"];
+    }
+
+    if ($downloaded > $maxBytes) {
+        @unlink($tmpFile);
+        return ['success' => false, 'error' => '檔案超過 20MB 限制，已中止下載'];
+    }
+
+    if ($downloaded === 0) {
+        @unlink($tmpFile);
+        return ['success' => false, 'error' => '下載內容為空'];
+    }
+
+    // 4. 上傳至 DriveServer
+    $driveUrl = rtrim(DRIVE_BASE_URL, '/') . '/api/upload.php';
+
+    $postFields = [
+        'account'  => $username,
+        'token'    => $userToken,
+        'filename' => $filename,
+        'file'     => new CURLFile($tmpFile, $mimeType, $filename),
+    ];
+
+    $chUp = curl_init($driveUrl);
+    curl_setopt_array($chUp, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $postFields,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+
+    $upResponse = curl_exec($chUp);
+    $upHttpCode = curl_getinfo($chUp, CURLINFO_HTTP_CODE);
+    $upCurlError = curl_error($chUp);
+    curl_close($chUp);
+    @unlink($tmpFile);
+
+    if ($upCurlError) {
+        return ['success' => false, 'error' => "上傳失敗: $upCurlError"];
+    }
+
+    $upData = json_decode($upResponse, true);
+    if (!$upData) {
+        return ['success' => false, 'error' => "DriveServer 回應解析失敗 (HTTP $upHttpCode): $upResponse"];
+    }
+
+    $status = $upData['status'] ?? $upData['result'] ?? '';
+    if (!in_array($status, ['success', 'ok'], true)) {
+        $msg = $upData['message'] ?? $upData['error'] ?? json_encode($upData, JSON_UNESCAPED_UNICODE);
+        return ['success' => false, 'error' => "DriveServer 上傳失敗: $msg"];
+    }
+
+    $driveUdid = $upData['udid'] ?? $upData['drive_udid'] ?? '';
+    $savedFilename = $upData['filename'] ?? $filename;
+
+    // 根據 MIME 給 AI 提示建立哪種 Cell
+    $cellTypeHint = 18; // 檔案
+    if (str_starts_with($mimeType, 'image/')) $cellTypeHint = 2;
+    elseif (str_starts_with($mimeType, 'video/')) $cellTypeHint = 3;
+    elseif (str_starts_with($mimeType, 'audio/')) $cellTypeHint = 4;
+
+    return [
+        'success'   => true,
+        'drive_udid' => $driveUdid,
+        'filename'  => $savedFilename,
+        'mime_type' => $mimeType,
+        'hint'      => "請用 createCell(cell_type=$cellTypeHint, content_json={\"drive_udid\":\"$driveUdid\",\"url\":\"\",\"mime_type\":\"$mimeType\"}) 建立媒體 Cell",
+    ];
 }
 
 function buildCellContent(?int $cellType, array $args) {
