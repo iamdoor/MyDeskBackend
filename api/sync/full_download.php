@@ -97,6 +97,21 @@ $stmt = $db->prepare('
 $stmt->execute([$userId]);
 $desktops = $stmt->fetchAll();
 
+// === 桌面 Tabs ===
+$stmt = $db->prepare('
+    SELECT dt.server_id, dt.local_udid, dt.desktop_local_udid, dt.title, dt.icon, dt.sort_order,
+           dt.desktop_type_code, dt.mixed_vertical_columns, dt.color_scheme_id,
+           dt.custom_bg_color, dt.custom_primary_color, dt.custom_secondary_color,
+           dt.custom_accent_color, dt.custom_text_color,
+           dt.is_deleted, dt.deleted_at, dt.created_at, dt.updated_at
+    FROM desktop_tabs dt
+    INNER JOIN desktops d ON d.local_udid = dt.desktop_local_udid
+    WHERE d.user_id = ? AND dt.is_deleted = 0
+    ORDER BY dt.desktop_local_udid, dt.sort_order
+');
+$stmt->execute([$userId]);
+$desktopTabs = $stmt->fetchAll();
+
 $desktopCells = [];
 $desktopComponents = [];
 $desktopComponentLinks = [];
@@ -107,16 +122,16 @@ foreach ($desktops as &$desktop) {
     $tagStmt->execute([$desktop['local_udid'], $userId]);
     $desktop['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
 
-    // Cell 池
-    $stmt2 = $db->prepare('SELECT desktop_local_udid, ref_type, ref_local_udid, created_at FROM desktop_cells WHERE desktop_local_udid = ?');
+    // Cell 池（含 tab_local_udid 和 local_udid）
+    $stmt2 = $db->prepare('SELECT local_udid, desktop_local_udid, tab_local_udid, ref_type, ref_local_udid, created_at FROM desktop_cells WHERE desktop_local_udid = ?');
     $stmt2->execute([$desktop['local_udid']]);
     $desktop['cells'] = $stmt2->fetchAll();
     foreach ($desktop['cells'] as $cellRef) {
         $desktopCells[] = $cellRef;
     }
 
-    // 組件
-    $compStmt = $db->prepare('SELECT desktop_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
+    // 組件（含 tab_local_udid）
+    $compStmt = $db->prepare('SELECT desktop_local_udid, tab_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
     $compStmt->execute([$desktop['local_udid']]);
     $components = $compStmt->fetchAll();
     foreach ($components as &$comp) {
@@ -176,6 +191,7 @@ jsonSuccess([
     'cells' => $cells,
     'data_sheets' => $dataSheets,
     'desktops' => $desktops,
+    'desktop_tabs' => $desktopTabs,
     'desktop_cells' => $desktopCells,
     'desktop_components' => $desktopComponents,
     'desktop_component_links' => $desktopComponentLinks,

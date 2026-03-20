@@ -111,6 +111,74 @@ foreach ($changes as $change) {
         }
     }
 
+    // 桌面 Tab（無衝突機制，upsert）
+    if ($entityType === 'desktop_tab') {
+        try {
+            $desktopUdid = $changeData['desktop_local_udid'] ?? '';
+            if (!$desktopUdid) throw new Exception('缺少 desktop_local_udid');
+
+            switch ($action) {
+                case 'create':
+                    $stmt = $db->prepare('SELECT server_id FROM desktop_tabs WHERE local_udid = ?');
+                    $stmt->execute([$localUdid]);
+                    $existing = $stmt->fetch();
+                    if ($existing) {
+                        $serverId = $existing['server_id'];
+                        $db->prepare('UPDATE desktop_tabs SET title=?, icon=?, sort_order=?, desktop_type_code=?, mixed_vertical_columns=?, color_scheme_id=?, custom_bg_color=?, custom_primary_color=?, custom_secondary_color=?, custom_accent_color=?, custom_text_color=?, updated_at=? WHERE local_udid=?')
+                           ->execute([
+                               $changeData['title'] ?? 'Tab',
+                               $changeData['icon'] ?? null,
+                               (int)($changeData['sort_order'] ?? 0),
+                               $changeData['desktop_type_code'] ?? 'single_column',
+                               isset($changeData['mixed_vertical_columns']) ? (int)$changeData['mixed_vertical_columns'] : null,
+                               isset($changeData['color_scheme_id']) ? (int)$changeData['color_scheme_id'] : null,
+                               $changeData['custom_bg_color'] ?? null,
+                               $changeData['custom_primary_color'] ?? null,
+                               $changeData['custom_secondary_color'] ?? null,
+                               $changeData['custom_accent_color'] ?? null,
+                               $changeData['custom_text_color'] ?? null,
+                               $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                               $localUdid,
+                           ]);
+                    } else {
+                        $serverId = generateUUID();
+                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $db->prepare('INSERT INTO desktop_tabs (server_id, local_udid, desktop_local_udid, title, icon, sort_order, desktop_type_code, mixed_vertical_columns, color_scheme_id, custom_bg_color, custom_primary_color, custom_secondary_color, custom_accent_color, custom_text_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                           ->execute([
+                               $serverId, $localUdid, $desktopUdid,
+                               $changeData['title'] ?? 'Tab',
+                               $changeData['icon'] ?? null,
+                               (int)($changeData['sort_order'] ?? 0),
+                               $changeData['desktop_type_code'] ?? 'single_column',
+                               isset($changeData['mixed_vertical_columns']) ? (int)$changeData['mixed_vertical_columns'] : null,
+                               isset($changeData['color_scheme_id']) ? (int)$changeData['color_scheme_id'] : null,
+                               $changeData['custom_bg_color'] ?? null,
+                               $changeData['custom_primary_color'] ?? null,
+                               $changeData['custom_secondary_color'] ?? null,
+                               $changeData['custom_accent_color'] ?? null,
+                               $changeData['custom_text_color'] ?? null,
+                               $now, $changeData['updated_at'] ?? $now,
+                           ]);
+                    }
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
+                    break;
+
+                case 'delete':
+                    $now = date('Y-m-d H:i:s');
+                    $db->prepare('UPDATE desktop_tabs SET is_deleted = 1, deleted_at = ?, updated_at = ? WHERE local_udid = ?')
+                       ->execute([$now, $now, $localUdid]);
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
+                    break;
+
+                default:
+                    $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => '未知 action'];
+            }
+        } catch (Exception $e) {
+            $results[] = ['local_udid' => $localUdid, 'status' => 'error', 'message' => $e->getMessage()];
+        }
+        continue;
+    }
+
     // API 模板（無衝突機制，直接覆寫）
     if ($entityType === 'api_template') {
         try {
@@ -246,9 +314,10 @@ foreach ($changes as $change) {
                     } else {
                         $serverId = generateUUID();
                         $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
-                        $db->prepare('INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                        $tabUdid = $changeData['tab_local_udid'] ?? null;
+                        $db->prepare('INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, tab_local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
                            ->execute([
-                               $serverId, $localUdid, $desktopUdid,
+                               $serverId, $localUdid, $desktopUdid, $tabUdid,
                                $changeData['component_type_code'] ?? 'free_block',
                                $changeData['bg_color'] ?? null,
                                $changeData['border_color'] ?? null,
@@ -316,13 +385,25 @@ foreach ($changes as $change) {
                     $desktopUdid  = $changeData['desktop_local_udid'] ?? '';
                     $refLocalUdid = $changeData['ref_local_udid'] ?? '';
                     $refType      = $changeData['ref_type'] ?? 'cell';
+                    $tabUdid      = $changeData['tab_local_udid'] ?? null;
                     if (!$desktopUdid || !$refLocalUdid) throw new Exception('缺少 desktop_local_udid 或 ref_local_udid');
                     if ($action === 'remove') {
-                        $db->prepare('DELETE FROM desktop_cells WHERE desktop_local_udid = ? AND ref_local_udid = ?')
-                           ->execute([$desktopUdid, $refLocalUdid]);
+                        if ($tabUdid) {
+                            $db->prepare('DELETE FROM desktop_cells WHERE desktop_local_udid = ? AND tab_local_udid = ? AND ref_local_udid = ?')
+                               ->execute([$desktopUdid, $tabUdid, $refLocalUdid]);
+                        } else {
+                            $db->prepare('DELETE FROM desktop_cells WHERE desktop_local_udid = ? AND tab_local_udid IS NULL AND ref_local_udid = ?')
+                               ->execute([$desktopUdid, $refLocalUdid]);
+                        }
                     } else {
-                        $db->prepare('INSERT IGNORE INTO desktop_cells (desktop_local_udid, ref_type, ref_local_udid, created_at) VALUES (?, ?, ?, NOW())')
-                           ->execute([$desktopUdid, $refType, $refLocalUdid]);
+                        $cellLocalUdid = $localUdid ?: generateUUID();
+                        if ($tabUdid) {
+                            $db->prepare('INSERT IGNORE INTO desktop_cells (local_udid, desktop_local_udid, tab_local_udid, ref_type, ref_local_udid, created_at) VALUES (?, ?, ?, ?, ?, NOW())')
+                               ->execute([$cellLocalUdid, $desktopUdid, $tabUdid, $refType, $refLocalUdid]);
+                        } else {
+                            $db->prepare('INSERT IGNORE INTO desktop_cells (local_udid, desktop_local_udid, tab_local_udid, ref_type, ref_local_udid, created_at) VALUES (?, ?, NULL, ?, ?, NOW())')
+                               ->execute([$cellLocalUdid, $desktopUdid, $refType, $refLocalUdid]);
+                        }
                     }
                     break;
 
