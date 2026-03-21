@@ -161,6 +161,48 @@ $stmt = $db->prepare('SELECT server_id, local_udid, name, accent_hex, bg_hex, su
 $stmt->execute([$userId]);
 $appThemes = $stmt->fetchAll();
 
+// === Activity Logs（僅提供最近 30 天） ===
+$thirtyDaysAgo = (new DateTime('now'))->modify('-30 days')->format('Y-m-d H:i:s');
+$stmt = $db->prepare('
+    SELECT id, user_id, device_udid, platform, device_name_snapshot, event_code, action_title,
+           desktop_local_udid, desktop_name_snapshot, tab_local_udid, tab_name_snapshot,
+           details_json, change_summary, custom_note, consent_required, consent_status,
+           consent_decided_at, occurred_at, expires_at, client_temp_id, created_at, updated_at
+    FROM activity_logs
+    WHERE user_id = ? AND occurred_at >= ?
+    ORDER BY occurred_at ASC, id ASC
+');
+$stmt->execute([$userId, $thirtyDaysAgo]);
+$activityLogs = $stmt->fetchAll();
+foreach ($activityLogs as &$log) {
+    if (!empty($log['details_json'])) {
+        $decoded = json_decode($log['details_json'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $log['details_json'] = $decoded;
+        }
+    }
+}
+unset($log);
+
+// === Device Log Settings ===
+$stmt = $db->prepare('
+    SELECT device_udid, platform, device_name, require_consent, default_consent,
+           enabled_events, last_updated_at, updated_at
+    FROM device_log_settings
+    WHERE user_id = ?
+');
+$stmt->execute([$userId]);
+$deviceLogSettings = $stmt->fetchAll();
+foreach ($deviceLogSettings as &$setting) {
+    if (!empty($setting['enabled_events'])) {
+        $decoded = json_decode($setting['enabled_events'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $setting['enabled_events'] = $decoded;
+        }
+    }
+}
+unset($setting);
+
 // === AI 對話 ===
 $stmt = $db->prepare('SELECT server_id, local_udid, context_type, context_local_udid, created_at, updated_at FROM ai_conversations WHERE user_id = ?');
 $stmt->execute([$userId]);
@@ -198,5 +240,7 @@ jsonSuccess([
     'ai_conversations' => $aiConversations,
     'api_templates' => $apiTemplates,
     'app_themes' => $appThemes,
+    'activity_logs' => $activityLogs,
+    'device_log_settings' => $deviceLogSettings,
     'server_now' => $serverNow,
 ]);

@@ -20,21 +20,30 @@ $userId = requireAuth();
 $data = getPostData();
 requireFields($data, ['device_udid', 'changes']);
 
+$clientUserId = isset($data['user_id']) ? (int) $data['user_id'] : $userId;
+if ($clientUserId !== $userId) {
+    jsonError('user_id 不匹配', 400);
+}
+
 $db = getDB();
 
 // 取得裝置 ID（不存在則自動註冊）
 $deviceUdid = $data['device_udid'];
-$stmt = $db->prepare('SELECT id FROM devices WHERE user_id = ? AND device_udid = ?');
+$stmt = $db->prepare('SELECT id, device_name, platform FROM devices WHERE user_id = ? AND device_udid = ?');
 $stmt->execute([$userId, $deviceUdid]);
 $device = $stmt->fetch();
 
 if (!$device) {
     $platform = $data['platform'] ?? 'ios';
     $stmt = $db->prepare('INSERT INTO devices (user_id, device_udid, device_name, platform) VALUES (?, ?, ?, ?)');
-    $stmt->execute([$userId, $deviceUdid, $data['device_name'] ?? '', $platform]);
+    $deviceNameInput = $data['device_name'] ?? '';
+    $stmt->execute([$userId, $deviceUdid, $deviceNameInput, $platform]);
     $deviceId = (int) $db->lastInsertId();
+    $deviceName = $deviceNameInput;
 } else {
     $deviceId = (int) $device['id'];
+    $deviceName = $device['device_name'] ?? ($data['device_name'] ?? '');
+    $platform = $data['platform'] ?? ($device['platform'] ?? 'ios');
 }
 
 $changes = is_string($data['changes']) ? json_decode($data['changes'], true) : $data['changes'];
@@ -42,8 +51,31 @@ if (!is_array($changes)) {
     jsonError('changes 格式錯誤');
 }
 
+$activityLogsPayload = [];
+if (isset($data['activity_logs'])) {
+    $activityLogsPayload = is_string($data['activity_logs']) ? json_decode($data['activity_logs'], true) : $data['activity_logs'];
+    if (!is_array($activityLogsPayload)) {
+        jsonError('activity_logs 格式錯誤');
+    }
+}
+
+$deviceLogSettingsPayload = null;
+if (isset($data['device_log_settings'])) {
+    $deviceLogSettingsPayload = is_string($data['device_log_settings']) ? json_decode($data['device_log_settings'], true) : $data['device_log_settings'];
+    if (!is_array($deviceLogSettingsPayload)) {
+        jsonError('device_log_settings 格式錯誤');
+    }
+}
+
 $results = [];
 $conflicts = [];
+$activityLogResults = [
+    'accepted' => [],
+    'failed' => [],
+];
+$deviceLogSettingsResult = [
+    'status' => $deviceLogSettingsPayload ? 'pending' : 'skipped',
+];
 
 // 實體類型對應的資料表
 $entityTableMap = [
@@ -516,6 +548,238 @@ foreach ($changes as $change) {
     }
 }
 
+$allowedActivityEvents = [
+    'app_launch',
+    'settings_change',
+    'desktop_tab_created',
+    'desktop_tab_updated',
+    'desktop_tab_switched',
+    'custom_note',
+];
+$defaultEventTitles = [
+    'app_launch' => '開啟 App',
+    'settings_change' => '修改設定',
+    'desktop_tab_created' => '建立桌面 Tab',
+    'desktop_tab_updated' => '編輯桌面 Tab',
+    'desktop_tab_switched' => '切換桌面 Tab',
+    'custom_note' => '自訂備註',
+];
+$allowedConsentStatuses = ['accepted', 'rejected', 'auto_applied'];
+
+if (!empty($activityLogsPayload)) {
+    if (count($activityLogsPayload) > 2000) {
+        jsonError('activity_logs 單次不可超過 2000 筆', 429);
+    }
+    $now = new DateTime('now');
+    $oldestAllowed = (clone $now)->modify('-35 days');
+
+    foreach ($activityLogsPayload as $log) {
+        $clientTempId = $log['client_temp_id'] ?? null;
+        if (!$clientTempId) {
+            $activityLogResults['failed'][] = ['client_temp_id' => null, 'error' => '缺少 client_temp_id'];
+            continue;
+        }
+
+        $eventCode = $log['event_code'] ?? '';
+        if (!in_array($eventCode, $allowedActivityEvents, true)) {
+            $activityLogResults['failed'][] = ['client_temp_id' => $clientTempId, 'error' => 'event_code 不支援'];
+            continue;
+        }
+
+        $occurredAtRaw = $log['occurred_at'] ?? null;
+        try {
+            $occurredAt = $occurredAtRaw ? new DateTime($occurredAtRaw) : null;
+        } catch (Exception $e) {
+            $occurredAt = null;
+        }
+        if (!$occurredAt) {
+            $activityLogResults['failed'][] = ['client_temp_id' => $clientTempId, 'error' => 'occurred_at 格式錯誤'];
+            continue;
+        }
+        if ($occurredAt < $oldestAllowed) {
+            $activityLogResults['failed'][] = ['client_temp_id' => $clientTempId, 'error' => 'occurred_at 超出 30 天限制'];
+            continue;
+        }
+
+        $expiresAtRaw = $log['expires_at'] ?? null;
+        try {
+            $expiresAt = $expiresAtRaw ? new DateTime($expiresAtRaw) : null;
+        } catch (Exception $e) {
+            $expiresAt = null;
+        }
+        if (!$expiresAt) {
+            $expiresAt = (clone $occurredAt)->modify('+30 days');
+        }
+
+        $consentRequired = !empty($log['consent_required']);
+        $consentStatus = $log['consent_status'] ?? 'accepted';
+        if (!in_array($consentStatus, $allowedConsentStatuses, true)) {
+            $activityLogResults['failed'][] = ['client_temp_id' => $clientTempId, 'error' => 'consent_status 不支援'];
+            continue;
+        }
+        $consentDecidedAtRaw = $log['consent_decided_at'] ?? null;
+        $consentDecidedAt = null;
+        if ($consentDecidedAtRaw) {
+            try {
+                $consentDecidedAt = (new DateTime($consentDecidedAtRaw))->format('Y-m-d H:i:s');
+            } catch (Exception $e) {
+                $consentDecidedAt = null;
+            }
+        }
+
+        $detailsJson = null;
+        if (isset($log['details_json'])) {
+            if (is_array($log['details_json'])) {
+                $detailsJson = json_encode($log['details_json'], JSON_UNESCAPED_UNICODE);
+            } elseif (is_string($log['details_json'])) {
+                $decoded = json_decode($log['details_json'], true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $detailsJson = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+                }
+            }
+        }
+
+        $actionTitle = $log['action_title'] ?? ($defaultEventTitles[$eventCode] ?? '操作紀錄');
+        $changeSummary = $log['change_summary'] ?? $actionTitle;
+        $desktopName = $log['desktop_name_snapshot'] ?? null;
+        $tabName = $log['tab_name_snapshot'] ?? null;
+        $customNote = $log['custom_note'] ?? null;
+        $platformForLog = $log['platform'] ?? $platform;
+        $deviceNameSnapshot = $log['device_name_snapshot'] ?? $deviceName;
+
+        try {
+            $stmt = $db->prepare('
+                INSERT INTO activity_logs (
+                    user_id, device_udid, platform, device_name_snapshot,
+                    event_code, action_title,
+                    desktop_local_udid, desktop_name_snapshot,
+                    tab_local_udid, tab_name_snapshot,
+                    details_json, change_summary, custom_note,
+                    consent_required, consent_status, consent_decided_at,
+                    occurred_at, expires_at, client_temp_id, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
+                )
+                ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+            ');
+            $stmt->execute([
+                $userId,
+                $deviceUdid,
+                $platformForLog,
+                $deviceNameSnapshot,
+                $eventCode,
+                $actionTitle,
+                $log['desktop_local_udid'] ?? null,
+                $desktopName,
+                $log['tab_local_udid'] ?? null,
+                $tabName,
+                $detailsJson,
+                $changeSummary,
+                $customNote,
+                $consentRequired ? 1 : 0,
+                $consentStatus,
+                $consentDecidedAt,
+                $occurredAt->format('Y-m-d H:i:s'),
+                $expiresAt->format('Y-m-d H:i:s'),
+                $clientTempId,
+            ]);
+
+            $activityLogResults['accepted'][] = [
+                'client_temp_id' => $clientTempId,
+                'occurred_at' => $occurredAt->format('Y-m-d H:i:s'),
+            ];
+        } catch (PDOException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                $activityLogResults['accepted'][] = [
+                    'client_temp_id' => $clientTempId,
+                    'occurred_at' => $occurredAt->format('Y-m-d H:i:s'),
+                ];
+            } else {
+                $activityLogResults['failed'][] = [
+                    'client_temp_id' => $clientTempId,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+    }
+}
+
+if ($deviceLogSettingsPayload) {
+    $enabledEventsRaw = $deviceLogSettingsPayload['enabled_events'] ?? [];
+    if (is_string($enabledEventsRaw)) {
+        $decoded = json_decode($enabledEventsRaw, true);
+        $enabledEventsRaw = is_array($decoded) ? $decoded : [];
+    }
+    if (!is_array($enabledEventsRaw)) {
+        $enabledEventsRaw = [];
+    }
+    $normalizedEvents = [];
+    foreach ($allowedActivityEvents as $code) {
+        $normalizedEvents[$code] = !empty($enabledEventsRaw[$code]);
+    }
+
+    $requireConsent = !empty($deviceLogSettingsPayload['require_consent']);
+    $defaultConsent = $deviceLogSettingsPayload['default_consent'] === 'reject' ? 'reject' : 'accept';
+    $deviceNamePayload = $deviceLogSettingsPayload['device_name'] ?? $deviceName ?? '';
+    $platformPayload = $deviceLogSettingsPayload['platform'] ?? $platform;
+    $lastUpdatedRaw = $deviceLogSettingsPayload['last_updated_at'] ?? null;
+    try {
+        $lastUpdatedAt = $lastUpdatedRaw ? new DateTime($lastUpdatedRaw) : new DateTime('now');
+    } catch (Exception $e) {
+        $lastUpdatedAt = new DateTime('now');
+    }
+    $lastUpdatedString = $lastUpdatedAt->format('Y-m-d H:i:s');
+
+    $stmt = $db->prepare('SELECT last_updated_at FROM device_log_settings WHERE user_id = ? AND device_udid = ?');
+    $stmt->execute([$userId, $deviceUdid]);
+    $existingSettings = $stmt->fetch();
+
+    if ($existingSettings && $existingSettings['last_updated_at'] >= $lastUpdatedString) {
+        $deviceLogSettingsResult = [
+            'status' => 'stale',
+            'server_last_updated_at' => $existingSettings['last_updated_at'],
+        ];
+    } else {
+        $stmt = $db->prepare('
+            INSERT INTO device_log_settings (
+                user_id, device_udid, platform, device_name,
+                require_consent, default_consent, enabled_events, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                platform = VALUES(platform),
+                device_name = VALUES(device_name),
+                require_consent = VALUES(require_consent),
+                default_consent = VALUES(default_consent),
+                enabled_events = VALUES(enabled_events),
+                last_updated_at = VALUES(last_updated_at),
+                updated_at = CURRENT_TIMESTAMP
+        ');
+        $stmt->execute([
+            $userId,
+            $deviceUdid,
+            $platformPayload,
+            $deviceNamePayload,
+            $requireConsent ? 1 : 0,
+            $defaultConsent,
+            json_encode($normalizedEvents, JSON_UNESCAPED_UNICODE),
+            $lastUpdatedString,
+        ]);
+
+        $deviceLogSettingsResult = [
+            'status' => 'accepted',
+            'server_last_updated_at' => $lastUpdatedString,
+        ];
+
+        $db->prepare('UPDATE devices SET device_name = ?, platform = ? WHERE id = ?')
+           ->execute([$deviceNamePayload, $platformPayload, $deviceId]);
+        $deviceName = $deviceNamePayload;
+    }
+} elseif (!$deviceLogSettingsPayload) {
+    $deviceLogSettingsResult = [
+        'status' => 'skipped',
+    ];
+}
+
 // 更新裝置同步時間
 $serverNow = $db->query("SELECT NOW()")->fetchColumn();
 $db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
@@ -525,4 +789,6 @@ jsonSuccess([
     'conflicts' => $conflicts,
     'has_conflicts' => !empty($conflicts),
     'server_now' => $serverNow,
+    'activity_logs' => $activityLogResults,
+    'device_log_settings' => $deviceLogSettingsResult,
 ]);

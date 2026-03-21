@@ -218,6 +218,49 @@ $stmt = $db->prepare('SELECT server_id, local_udid, name, accent_hex, bg_hex, su
 $stmt->execute([$userId, $lastSyncAt]);
 $appThemes = $stmt->fetchAll();
 
+$activityLogs = [];
+$deviceLogSettings = [];
+$thirtyDaysAgo = (new DateTime($serverNow))->modify('-30 days')->format('Y-m-d H:i:s');
+
+$stmt = $db->prepare('
+    SELECT id, user_id, device_udid, platform, device_name_snapshot, event_code, action_title,
+           desktop_local_udid, desktop_name_snapshot, tab_local_udid, tab_name_snapshot,
+           details_json, change_summary, custom_note, consent_required, consent_status,
+           consent_decided_at, occurred_at, expires_at, client_temp_id, created_at, updated_at
+    FROM activity_logs
+    WHERE user_id = ? AND updated_at > ? AND occurred_at >= ?
+    ORDER BY occurred_at ASC, id ASC
+');
+$stmt->execute([$userId, $lastSyncAt, $thirtyDaysAgo]);
+$activityLogs = $stmt->fetchAll();
+foreach ($activityLogs as &$log) {
+    if (!empty($log['details_json'])) {
+        $decoded = json_decode($log['details_json'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $log['details_json'] = $decoded;
+        }
+    }
+}
+unset($log);
+
+$stmt = $db->prepare('
+    SELECT device_udid, platform, device_name, require_consent, default_consent,
+           enabled_events, last_updated_at, updated_at
+    FROM device_log_settings
+    WHERE user_id = ? AND updated_at > ?
+');
+$stmt->execute([$userId, $lastSyncAt]);
+$deviceLogSettings = $stmt->fetchAll();
+foreach ($deviceLogSettings as &$setting) {
+    if (!empty($setting['enabled_events'])) {
+        $decoded = json_decode($setting['enabled_events'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $setting['enabled_events'] = $decoded;
+        }
+    }
+}
+unset($setting);
+
 // 更新裝置同步時間
 $db->prepare('UPDATE devices SET last_sync_at = ? WHERE id = ?')->execute([$serverNow, $deviceId]);
 
@@ -232,7 +275,9 @@ $totalCount = count($categories)
     + count($desktopCells)
     + count($desktopComponentLinks)
     + count($apiTemplates)
-    + count($appThemes);
+    + count($appThemes)
+    + count($activityLogs)
+    + count($deviceLogSettings);
 
 jsonSuccess([
     'categories' => $categories,
@@ -247,6 +292,8 @@ jsonSuccess([
     'desktop_component_links' => $desktopComponentLinks,
     'api_templates' => $apiTemplates,
     'app_themes' => $appThemes,
+    'activity_logs' => $activityLogs,
+    'device_log_settings' => $deviceLogSettings,
     'server_now' => $serverNow,
     'count' => $totalCount,
 ]);
