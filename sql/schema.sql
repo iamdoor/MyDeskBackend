@@ -428,6 +428,7 @@ CREATE TABLE `device_log_settings` (
     `require_consent` TINYINT(1) NOT NULL DEFAULT 0,
     `default_consent` ENUM('accept','reject') NOT NULL DEFAULT 'accept',
     `enabled_events` JSON NOT NULL,
+    `log_view_filter` JSON DEFAULT NULL,
     `last_updated_at` DATETIME NOT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

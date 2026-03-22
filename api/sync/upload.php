@@ -722,6 +722,13 @@ if ($deviceLogSettingsPayload) {
     $defaultConsent = $deviceLogSettingsPayload['default_consent'] === 'reject' ? 'reject' : 'accept';
     $deviceNamePayload = $deviceLogSettingsPayload['device_name'] ?? $deviceName ?? '';
     $platformPayload = $deviceLogSettingsPayload['platform'] ?? $platform;
+
+    // log_view_filter：null 代表顯示全部，非 null 時為事件 code 陣列
+    $logViewFilterRaw = $deviceLogSettingsPayload['log_view_filter'] ?? null;
+    $logViewFilterJson = null;
+    if (is_array($logViewFilterRaw)) {
+        $logViewFilterJson = json_encode(array_values($logViewFilterRaw), JSON_UNESCAPED_UNICODE);
+    }
     $lastUpdatedRaw = $deviceLogSettingsPayload['last_updated_at'] ?? null;
     try {
         $lastUpdatedAt = $lastUpdatedRaw ? new DateTime($lastUpdatedRaw) : new DateTime('now');
@@ -743,14 +750,15 @@ if ($deviceLogSettingsPayload) {
         $stmt = $db->prepare('
             INSERT INTO device_log_settings (
                 user_id, device_udid, platform, device_name,
-                require_consent, default_consent, enabled_events, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                require_consent, default_consent, enabled_events, log_view_filter, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 platform = VALUES(platform),
                 device_name = VALUES(device_name),
                 require_consent = VALUES(require_consent),
                 default_consent = VALUES(default_consent),
                 enabled_events = VALUES(enabled_events),
+                log_view_filter = VALUES(log_view_filter),
                 last_updated_at = VALUES(last_updated_at),
                 updated_at = CURRENT_TIMESTAMP
         ');
@@ -762,6 +770,7 @@ if ($deviceLogSettingsPayload) {
             $requireConsent ? 1 : 0,
             $defaultConsent,
             json_encode($normalizedEvents, JSON_UNESCAPED_UNICODE),
+            $logViewFilterJson,
             $lastUpdatedString,
         ]);
 

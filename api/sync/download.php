@@ -245,7 +245,7 @@ unset($log);
 
 $stmt = $db->prepare('
     SELECT device_udid, platform, device_name, require_consent, default_consent,
-           enabled_events, last_updated_at, updated_at
+           enabled_events, log_view_filter, last_updated_at, updated_at
     FROM device_log_settings
     WHERE user_id = ? AND updated_at > ?
 ');
@@ -256,6 +256,12 @@ foreach ($deviceLogSettings as &$setting) {
         $decoded = json_decode($setting['enabled_events'], true);
         if (json_last_error() === JSON_ERROR_NONE) {
             $setting['enabled_events'] = $decoded;
+        }
+    }
+    if (isset($setting['log_view_filter']) && $setting['log_view_filter'] !== null) {
+        $decoded = json_decode($setting['log_view_filter'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $setting['log_view_filter'] = $decoded;
         }
     }
 }
