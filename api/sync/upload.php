@@ -169,12 +169,13 @@ foreach ($changes as $change) {
                                $changeData['custom_secondary_color'] ?? null,
                                $changeData['custom_accent_color'] ?? null,
                                $changeData['custom_text_color'] ?? null,
-                               $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                               date('Y-m-d H:i:s'),
                                $localUdid,
                            ]);
                     } else {
                         $serverId = generateUUID();
-                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $createdAt = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $serverNow = date('Y-m-d H:i:s');
                         $db->prepare('INSERT INTO desktop_tabs (server_id, local_udid, desktop_local_udid, title, icon, sort_order, desktop_type_code, mixed_vertical_columns, color_scheme_id, custom_bg_color, custom_primary_color, custom_secondary_color, custom_accent_color, custom_text_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
                            ->execute([
                                $serverId, $localUdid, $desktopUdid,
@@ -189,7 +190,7 @@ foreach ($changes as $change) {
                                $changeData['custom_secondary_color'] ?? null,
                                $changeData['custom_accent_color'] ?? null,
                                $changeData['custom_text_color'] ?? null,
-                               $now, $changeData['updated_at'] ?? $now,
+                               $createdAt, $serverNow,
                            ]);
                     }
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
@@ -340,12 +341,13 @@ foreach ($changes as $change) {
                                (int)($changeData['border_width'] ?? 0),
                                (int)($changeData['corner_radius'] ?? 12),
                                $configJson,
-                               $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                               date('Y-m-d H:i:s'),
                                $localUdid,
                            ]);
                     } else {
                         $serverId = generateUUID();
-                        $now = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $createdAt = $changeData['created_at'] ?? date('Y-m-d H:i:s');
+                        $serverNow = date('Y-m-d H:i:s');
                         $tabUdid = $changeData['tab_local_udid'] ?? null;
                         $db->prepare('INSERT INTO desktop_components (server_id, local_udid, desktop_local_udid, tab_local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
                            ->execute([
@@ -356,8 +358,8 @@ foreach ($changes as $change) {
                                (int)($changeData['border_width'] ?? 0),
                                (int)($changeData['corner_radius'] ?? 12),
                                $configJson,
-                               $now,
-                               $changeData['updated_at'] ?? $now,
+                               $createdAt,
+                               $serverNow,
                            ]);
                     }
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success', 'server_id' => $serverId];
@@ -374,7 +376,7 @@ foreach ($changes as $change) {
                            (int)($changeData['border_width'] ?? 0),
                            (int)($changeData['corner_radius'] ?? 12),
                            $configJson,
-                           $changeData['updated_at'] ?? date('Y-m-d H:i:s'),
+                           date('Y-m-d H:i:s'),
                            $localUdid,
                        ]);
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
@@ -476,6 +478,7 @@ foreach ($changes as $change) {
                     $changeData['server_id'] = $serverId;
                     $changeData['local_udid'] = $localUdid;
                     $changeData['user_id'] = $userId;
+                    $changeData['updated_at'] = date('Y-m-d H:i:s'); // 永遠用伺服器時間，避免 client clock skew 導致 incremental sync 遺漏
 
                     $columns = array_keys($changeData);
                     $placeholders = array_fill(0, count($columns), '?');
@@ -498,10 +501,13 @@ foreach ($changes as $change) {
                     $setClauses = [];
                     $params = [];
                     foreach ($changeData as $key => $value) {
-                        if (in_array($key, ['id', 'server_id', 'local_udid', 'user_id'])) continue;
+                        if (in_array($key, ['id', 'server_id', 'local_udid', 'user_id', 'updated_at'])) continue;
                         $setClauses[] = "`$key` = ?";
                         $params[] = $value;
                     }
+                    // 永遠用伺服器時間，避免 client clock skew 導致 incremental sync 遺漏
+                    $setClauses[] = '`updated_at` = ?';
+                    $params[] = date('Y-m-d H:i:s');
 
                     if (!empty($setClauses)) {
                         $params[] = $userId;

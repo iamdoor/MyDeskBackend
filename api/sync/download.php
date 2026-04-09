@@ -152,6 +152,30 @@ foreach ($desktops as &$desktop) {
 }
 unset($desktop);
 
+// 補充：desktop_cells 引用的 cells 本體（避免 updated_at 比 lastSyncAt 舊而被漏掉）
+$existingCellUdids = array_flip(array_column($cells, 'local_udid'));
+$missingCellUdids = [];
+foreach ($desktopCells as $cellRef) {
+    if ($cellRef['ref_type'] === 'cell' && !isset($existingCellUdids[$cellRef['ref_local_udid']])) {
+        $missingCellUdids[] = $cellRef['ref_local_udid'];
+    }
+}
+$missingCellUdids = array_values(array_unique($missingCellUdids));
+if (!empty($missingCellUdids)) {
+    $ph = implode(',', array_fill(0, count($missingCellUdids), '?'));
+    $stmt = $db->prepare("SELECT server_id, local_udid, cell_type, title, description, importance, content_json, custom_id, desktop_origin, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM cells WHERE user_id = ? AND local_udid IN ($ph)");
+    $stmt->execute(array_merge([$userId], $missingCellUdids));
+    foreach ($stmt->fetchAll() as $cell) {
+        if ($cell['content_json']) {
+            $cell['content_json'] = json_decode($cell['content_json'], true);
+        }
+        $tagStmt = $db->prepare('SELECT t.name FROM tags t INNER JOIN cell_tags ct ON ct.tag_local_udid = t.local_udid INNER JOIN cells c ON c.id = ct.cell_id WHERE c.user_id = ? AND c.local_udid = ?');
+        $tagStmt->execute([$userId, $cell['local_udid']]);
+        $cell['tags'] = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
+        $cells[] = $cell;
+    }
+}
+
 // 補充：直接有更新的 Tabs（父桌面未必有更新）
 $stmt = $db->prepare('
     SELECT dt.server_id, dt.local_udid, dt.desktop_local_udid, dt.title, dt.icon, dt.sort_order,
