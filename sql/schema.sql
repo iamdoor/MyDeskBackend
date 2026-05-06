@@ -336,6 +336,8 @@ CREATE TABLE `desktop_components` (
     `border_width` TINYINT NOT NULL DEFAULT 0,
     `corner_radius` TINYINT NOT NULL DEFAULT 0,
     `config_json` JSON DEFAULT NULL,
+    `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
+    `deleted_at` DATETIME DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

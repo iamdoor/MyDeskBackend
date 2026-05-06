@@ -320,11 +320,10 @@ foreach ($changes as $change) {
     // 桌面組件（無 user_id，需自定義處理，create 需回傳 server_id）
     if ($entityType === 'desktop_component') {
         try {
-            $desktopUdid = $changeData['desktop_local_udid'] ?? '';
-            if (!$desktopUdid) throw new Exception('缺少 desktop_local_udid');
-
             switch ($action) {
                 case 'create':
+                    $desktopUdid = $changeData['desktop_local_udid'] ?? '';
+                    if (!$desktopUdid) throw new Exception('缺少 desktop_local_udid');
                     $stmt = $db->prepare('SELECT server_id FROM desktop_components WHERE local_udid = ?');
                     $stmt->execute([$localUdid]);
                     $existing = $stmt->fetch();
@@ -384,7 +383,7 @@ foreach ($changes as $change) {
 
                 case 'delete':
                     $db->prepare('DELETE FROM desktop_component_links WHERE component_local_udid = ?')->execute([$localUdid]);
-                    $db->prepare('DELETE FROM desktop_components WHERE local_udid = ?')->execute([$localUdid]);
+                    $db->prepare('UPDATE desktop_components SET is_deleted = 1, deleted_at = NOW(), updated_at = NOW() WHERE local_udid = ?')->execute([$localUdid]);
                     $results[] = ['local_udid' => $localUdid, 'status' => 'success'];
                     break;
 

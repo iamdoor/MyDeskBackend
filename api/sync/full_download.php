@@ -131,7 +131,7 @@ foreach ($desktops as &$desktop) {
     }
 
     // 組件（含 tab_local_udid）
-    $compStmt = $db->prepare('SELECT desktop_local_udid, tab_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
+    $compStmt = $db->prepare('SELECT desktop_local_udid, tab_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, is_deleted, deleted_at, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
     $compStmt->execute([$desktop['local_udid']]);
     $components = $compStmt->fetchAll();
     foreach ($components as &$comp) {

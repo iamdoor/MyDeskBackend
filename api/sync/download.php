@@ -131,7 +131,7 @@ foreach ($desktops as &$desktop) {
     }
 
     // 組件（含 tab_local_udid）
-    $stmt2 = $db->prepare('SELECT desktop_local_udid, tab_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
+    $stmt2 = $db->prepare('SELECT desktop_local_udid, tab_local_udid, server_id, local_udid, component_type_code, bg_color, border_color, border_width, corner_radius, config_json, is_deleted, deleted_at, created_at, updated_at FROM desktop_components WHERE desktop_local_udid = ?');
     $stmt2->execute([$desktop['local_udid']]);
     $components = $stmt2->fetchAll();
     foreach ($components as &$comp) {
@@ -194,7 +194,7 @@ $desktopTabs = $stmt->fetchAll();
 $stmt = $db->prepare('
     SELECT dc.server_id, dc.local_udid, dc.desktop_local_udid, dc.tab_local_udid, dc.component_type_code,
            dc.bg_color, dc.border_color, dc.border_width, dc.corner_radius,
-           dc.config_json, dc.created_at, dc.updated_at
+           dc.config_json, dc.is_deleted, dc.deleted_at, dc.created_at, dc.updated_at
     FROM desktop_components dc
     INNER JOIN desktops d ON d.local_udid = dc.desktop_local_udid
     WHERE d.user_id = ? AND dc.updated_at > ?
