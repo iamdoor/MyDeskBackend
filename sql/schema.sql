@@ -156,6 +156,7 @@ CREATE TABLE `data_sheets` (
     `category_id` VARCHAR(36) DEFAULT NULL,
     `sub_category_id` VARCHAR(36) DEFAULT NULL,
     `is_smart` TINYINT(1) NOT NULL DEFAULT 0,
+    `scope` ENUM('library','workspace') NOT NULL DEFAULT 'library' COMMENT 'library=長期知識庫, workspace=桌面工作暫用',
     `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
     `deleted_at` DATETIME DEFAULT NULL,
     `scheduled_delete` TINYINT(1) NOT NULL DEFAULT 0,
@@ -170,6 +171,7 @@ CREATE TABLE `data_sheets` (
     KEY `idx_user_category` (`user_id`, `category_id`),
     KEY `idx_user_deleted` (`user_id`, `is_deleted`),
     KEY `idx_user_updated` (`user_id`, `updated_at`),
+    KEY `idx_user_scope` (`user_id`, `scope`),
     KEY `idx_scheduled_delete` (`scheduled_delete`, `scheduled_delete_at`),
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -294,6 +296,7 @@ CREATE TABLE `desktops` (
     `deleted_at` DATETIME DEFAULT NULL,
     `scheduled_delete` TINYINT(1) NOT NULL DEFAULT 0,
     `scheduled_delete_at` DATETIME DEFAULT NULL,
+    `quick_open_datasheet_udid` VARCHAR(36) DEFAULT NULL,
     `ai_edited` TINYINT(1) NOT NULL DEFAULT 0,
     `ai_edited_at` DATETIME DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

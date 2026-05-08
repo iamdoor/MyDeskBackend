@@ -60,9 +60,9 @@ $stmt = $db->prepare('
         server_id, local_udid, user_id, title, description, importance,
         category_id, sub_category_id, desktop_type_code, mixed_vertical_columns,
         color_scheme_id, custom_bg_color, custom_primary_color, custom_secondary_color,
-        custom_accent_color, custom_text_color, is_favorite,
+        custom_accent_color, custom_text_color, is_favorite, quick_open_datasheet_udid,
         scheduled_delete, scheduled_delete_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ');
 $stmt->execute([
     $serverId,
@@ -82,6 +82,7 @@ $stmt->execute([
     $data['custom_accent_color'] ?? null,
     $data['custom_text_color'] ?? null,
     (int) ($data['is_favorite'] ?? 0),
+    $data['quick_open_datasheet_udid'] ?? null,
     (int) ($data['scheduled_delete'] ?? 0),
     $data['scheduled_delete_at'] ?? null,
 ]);

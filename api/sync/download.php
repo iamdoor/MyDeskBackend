@@ -77,7 +77,7 @@ foreach ($cells as &$cell) {
 }
 
 // DataSheets
-$stmt = $db->prepare('SELECT server_id, local_udid, title, description, importance, category_id, sub_category_id, is_smart, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM data_sheets WHERE user_id = ? AND updated_at > ?');
+$stmt = $db->prepare('SELECT server_id, local_udid, title, description, importance, category_id, sub_category_id, is_smart, scope, is_deleted, deleted_at, scheduled_delete, scheduled_delete_at, ai_edited, ai_edited_at, created_at, updated_at FROM data_sheets WHERE user_id = ? AND updated_at > ?');
 $stmt->execute([$userId, $lastSyncAt]);
 $dataSheets = $stmt->fetchAll();
 
