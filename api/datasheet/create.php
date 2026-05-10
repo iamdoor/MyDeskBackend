@@ -57,10 +57,14 @@ if (!empty($data['sub_category_id'])) {
     $subCategoryLocalUdid = $sub['local_udid'];
 }
 
+$allowedScopes = ['library', 'workspace'];
+$scope = in_array($data['scope'] ?? '', $allowedScopes, true) ? $data['scope'] : 'library';
+
 $stmt = $db->prepare('
     INSERT INTO data_sheets (server_id, local_udid, user_id, title, description, importance,
-                             category_id, sub_category_id, is_smart, scheduled_delete, scheduled_delete_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             category_id, sub_category_id, is_smart, scope,
+                             scheduled_delete, scheduled_delete_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ');
 $stmt->execute([
     $serverId,
@@ -72,6 +76,7 @@ $stmt->execute([
     $categoryLocalUdid,
     $subCategoryLocalUdid,
     (int) ($data['is_smart'] ?? 0),
+    $scope,
     (int) ($data['scheduled_delete'] ?? 0),
     $data['scheduled_delete_at'] ?? null,
 ]);

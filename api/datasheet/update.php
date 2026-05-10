@@ -40,6 +40,15 @@ $allowedFields = [
     'scheduled_delete_at' => 'string',
 ];
 
+// scope 需額外驗證合法值
+if (array_key_exists('scope', $data)) {
+    $allowedScopes = ['library', 'workspace'];
+    if (in_array($data['scope'], $allowedScopes, true)) {
+        $updates[] = '`scope` = ?';
+        $params[] = $data['scope'];
+    }
+}
+
 foreach ($allowedFields as $field => $type) {
     if (array_key_exists($field, $data)) {
         $updates[] = "`$field` = ?";

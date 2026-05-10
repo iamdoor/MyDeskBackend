@@ -454,7 +454,7 @@ foreach ($changes as $change) {
                            ->execute([$sortOrder, $localUdid]);
                     } else {
                         $now = date('Y-m-d H:i:s');
-                        $db->prepare('INSERT IGNORE INTO desktop_component_links (local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                        $db->prepare('INSERT INTO desktop_component_links (local_udid, component_local_udid, ref_type, ref_local_udid, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order), updated_at = VALUES(updated_at)')
                            ->execute([$localUdid, $compUdid, $refType, $refLocalUdid, $sortOrder, $now, $now]);
                     }
                     break;
